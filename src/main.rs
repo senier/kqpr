@@ -1,11 +1,12 @@
 use gtk::prelude::*;
 use gtk::{
-    Application, ApplicationWindow, Builder, CellRendererText, Label, ListStore, TreeView,
-    TreeViewColumn,
+    Application, ApplicationWindow, Builder, CellRendererText, CssProvider, Label, ListStore,
+    StyleContext, TreeView, TreeViewColumn,
 };
 use keepass::{Database, NodeRef};
 use std::error::Error;
 use std::fs::File;
+use gdk::Screen;
 
 struct Entry {
     title: String,
@@ -58,6 +59,18 @@ fn build_ui(application: &Application) {
     let view: TreeView = builder.object("tree_entries").expect("Tree view not found");
 
     let window: ApplicationWindow = builder.object("window_main").expect("Window not found");
+
+    let css_provider = CssProvider::new();
+    let style = include_bytes!("style.css");
+
+    css_provider
+        .load_from_data(style)
+        .expect("Error loading CSS");
+    StyleContext::add_provider_for_screen(
+        &Screen::default().expect("Error initializing Gtk CSS provider"),
+        &css_provider,
+        gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
+    );
 
     window.set_application(Some(application));
     window.show_all();

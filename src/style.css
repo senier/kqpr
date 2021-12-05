@@ -1,0 +1,10 @@
+.error {
+    background-color: #d60a0a;
+    color: white;
+    border-color: white;
+    border-style: solid;
+    border-radius: 8px;
+    border-width: 3px;
+    font-weight: bold;
+    transition: 300ms linear;
+}
