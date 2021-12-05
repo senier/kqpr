@@ -91,11 +91,10 @@ fn build_ui(application: &Application) {
     });
 }
 
-fn main() -> Result<(), Box<dyn Error>> {
+fn main() {
     let kqpr = Application::builder()
         .application_id("net.senier.kqpr")
         .build();
     kqpr.connect_activate(build_ui);
     kqpr.run();
-    Ok(())
 }
