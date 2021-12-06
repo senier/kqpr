@@ -1,12 +1,12 @@
+use gdk::Screen;
 use gtk::prelude::*;
 use gtk::{
-    Application, ApplicationWindow, Builder, CellRendererText, CssProvider, Label, ListStore,
-    StyleContext, TreeView, TreeViewColumn,
+    Application, ApplicationWindow, Builder, Button, CellRendererText, CssProvider,
+    FileChooserAction, FileChooserDialog, Label, ListStore, ResponseType, StyleContext, TreeView, TreeViewColumn,
 };
 use keepass::{Database, NodeRef};
 use std::error::Error;
 use std::fs::File;
-use gdk::Screen;
 
 struct Entry {
     title: String,
@@ -73,7 +73,6 @@ fn build_ui(application: &Application) {
     );
 
     window.set_application(Some(application));
-    window.show_all();
 
     let current_entry_label: Label = builder
         .object("current_entry")
@@ -81,6 +80,10 @@ fn build_ui(application: &Application) {
     let current_password_label: Label = builder
         .object("current_password")
         .expect("Current password label not found");
+    let button_open: Button = builder
+        .object("button_open")
+        .expect("Open button not found");
+
     let column = TreeViewColumn::new();
     let cell = CellRendererText::new();
 
@@ -93,6 +96,27 @@ fn build_ui(application: &Application) {
         Ok(ref data) => view.set_model(Some(&convert_model(&data))),
     }
 
+    button_open.connect_clicked(glib::clone!(@weak window => move |_| {
+        let dialog = FileChooserDialog::new(
+            Some("Open File"),
+            Some(&window),
+            FileChooserAction::Open,
+        );
+
+        dialog.add_buttons(&[
+            ("Open", gtk::ResponseType::Ok),
+            ("Cancel", gtk::ResponseType::Cancel),
+        ]);
+
+        dialog.connect_response(|dialog, response| {
+            if response == ResponseType::Ok {
+                println!("Select file: {:?}", dialog.filename());
+            }
+            dialog.close();
+        });
+        dialog.show_all();
+    }));
+
     view.connect_cursor_changed(move |tree_view| match &model {
         Ok(ref data) => {
             let (path, _) = tree_view.selection().selected_rows();
@@ -102,6 +126,8 @@ fn build_ui(application: &Application) {
         }
         Err(why) => panic!("List should be disabled when no keys are loaded: {}", why),
     });
+
+    window.show_all();
 }
 
 fn main() {
