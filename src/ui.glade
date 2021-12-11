@@ -7,11 +7,11 @@
     <property name="default-width">800</property>
     <property name="default-height">600</property>
     <child>
-      <object class="GtkStack">
+      <object class="GtkStack" id="stack">
         <property name="visible">True</property>
         <property name="can-focus">False</property>
         <child>
-          <object class="GtkBox" id="box_no_database">
+          <object class="GtkBox" id="stack_entry_no_database">
             <property name="visible">True</property>
             <property name="can-focus">False</property>
             <property name="valign">center</property>
@@ -49,7 +49,7 @@
           </packing>
         </child>
         <child>
-          <object class="GtkBox" id="box_password">
+          <object class="GtkBox" id="stack_entry_password">
             <property name="visible">True</property>
             <property name="can-focus">False</property>
             <property name="halign">center</property>
@@ -74,7 +74,7 @@
               </packing>
             </child>
             <child>
-              <object class="GtkBox" id="box_unlock1">
+              <object class="GtkBox" id="stack_entry_unlock">
                 <property name="visible">True</property>
                 <property name="can-focus">False</property>
                 <child>
@@ -124,7 +124,7 @@
           </packing>
         </child>
         <child>
-          <object class="GtkBox" id="box_database">
+          <object class="GtkBox" id="stack_entry_database">
             <property name="visible">True</property>
             <property name="can-focus">False</property>
             <child>
@@ -308,7 +308,7 @@
     <property name="relative-to">entry_password</property>
     <property name="position">bottom</property>
     <child>
-      <object class="GtkLabel">
+      <object class="GtkLabel" id="label_incorrect_password">
         <property name="visible">True</property>
         <property name="can-focus">False</property>
         <property name="halign">center</property>
