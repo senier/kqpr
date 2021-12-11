@@ -1,5 +1,4 @@
 use gdk::Screen;
-use gtk::glib;
 use gtk::prelude::*;
 use gtk::{
     Application, ApplicationWindow, Box, Builder, Button, CellRendererText, CssProvider, Entry,
@@ -33,7 +32,6 @@ fn convert_model(model: &Vec<Element>) -> ListStore {
 
 #[derive(PartialEq, Clone)]
 enum State {
-    Uninitialized,
     Empty,
     Locked,
     Unlocked,
@@ -43,10 +41,6 @@ enum State {
 struct Context {
     current: State,
     file: Option<PathBuf>,
-}
-
-#[derive(Clone)]
-struct UI {
     window: ApplicationWindow,
     button_open: Button,
     button_close: Button,
@@ -58,15 +52,14 @@ struct UI {
     stack: Stack,
     stack_entry_no_database: Box,
     stack_entry_database: Box,
-    stack_entry_unlock: Box,
     stack_entry_password: Box,
     popover_incorrect_password: Popover,
     label_incorrect_password: Label,
     entry_password: Entry,
 }
 
-impl UI {
-    fn new() -> UI {
+impl Context {
+    fn new() -> Context {
         let builder: Builder = Builder::from_string(include_str!("ui.glade"));
         let css_provider = CssProvider::new();
         let style = include_bytes!("style.css");
@@ -78,7 +71,7 @@ impl UI {
             &css_provider,
             gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
         );
-        UI {
+        Context {
             window: builder.object("window_main").expect("Window not found"),
             button_open: builder
                 .object("button_open")
@@ -106,9 +99,6 @@ impl UI {
             stack_entry_database: builder
                 .object("stack_entry_database")
                 .expect("Database stack entry not found"),
-            stack_entry_unlock: builder
-                .object("stack_entry_unlock")
-                .expect("Unlock stack entry not found"),
             stack_entry_password: builder
                 .object("stack_entry_password")
                 .expect("Password stack entry not found"),
@@ -121,28 +111,27 @@ impl UI {
             entry_password: builder
                 .object("entry_password")
                 .expect("Password entry not found"),
+            current: State::Empty,
+            file: None,
         }
     }
 }
 
 fn fsm(application: &Application) {
-    let ui = Rc::new(UI::new());
-    let context = RefCell::new(Context {
-        current: State::Uninitialized,
-        file: None,
-    });
 
-    ui.window.set_application(Some(application));
+    let context = Rc::new(RefCell::new(Context::new()));
 
-    // Open
+    context.borrow().window.set_application(Some(application));
+
     let open_context = context.clone();
-    ui.button_open
-        .connect_clicked(glib::clone!(@weak ui => move |_| {
-            assert!(open_context.borrow().current == State::Empty);
+    context.borrow().button_open
+        .connect_clicked(move |_| {
+            let context = open_context.borrow_mut();
+            assert!(context.current == State::Empty);
 
             let dialog = FileChooserDialog::new(
                 Some("Open File"),
-                Some(&ui.window),
+                Some(&context.window),
                 FileChooserAction::Open,
             );
 
@@ -153,55 +142,65 @@ fn fsm(application: &Application) {
 
             let dialog_context = open_context.clone();
             dialog.connect_response(move |dialog, response| {
+                let mut context = dialog_context.borrow_mut();
                 if response == ResponseType::Ok {
-                    dialog_context.borrow_mut().file = Some(dialog.filename().expect("No filename selected"));
-                    dialog_context.borrow_mut().current = State::Locked;
+                    context.file = Some(dialog.filename().expect("No filename selected"));
+                    context.stack.set_visible_child(&context.stack_entry_password);
+                    context.button_open.set_visible(false);
+                    context.button_close.set_visible(true);
+                    context.subtitle_label.set_visible(true);
+                    context.subtitle_label.set_text(context.file.clone().unwrap().to_str().unwrap());
+                    context.current = State::Locked;
                 }
                 dialog.close();
             });
             dialog.show_all();
-        }));
+        });
 
     let close_context = context.clone();
-    ui.button_close
-        .connect_clicked(glib::clone!(@weak ui => move |_| {
-            assert!(close_context.borrow().current == State::Locked || close_context.borrow().current == State::Unlocked);
+    context.borrow().button_close
+        .connect_clicked(move |_| {
+            let mut context = close_context.borrow_mut();
+            assert!(context.current == State::Locked || context.current == State::Unlocked);
 
-            ui.stack.set_visible_child(&ui.stack_entry_no_database);
-            ui.button_open.set_visible(true);
-            ui.button_close.set_visible(false);
-            ui.subtitle_label.set_visible(false);
-            close_context.borrow_mut().current = State::Empty;
-        }));
+            context.stack.set_visible_child(&context.stack_entry_no_database);
+            context.button_open.set_visible(true);
+            context.button_close.set_visible(false);
+            context.subtitle_label.set_visible(false);
+            context.current = State::Empty;
+        });
 
-    ui.button_unlock
-        .connect_clicked(glib::clone!(@weak ui => move |_| {
-            assert!(context.borrow().current == State::Locked);
+    let unlock_context = context.clone();
+    context.borrow().button_unlock
+        .connect_clicked(move |_| {
+            let mut context = unlock_context.borrow_mut();
+            assert!(context.current == State::Locked);
 
-            let name = File::open(context.borrow().file.clone().unwrap().into_os_string());
+            let name = File::open(context.file.clone().unwrap().into_os_string());
             match name {
                 Err(message) => {
-                    ui.stack.set_visible_child(&ui.stack_entry_password);
-                    ui.button_open.set_visible(false);
-                    ui.button_close.set_visible(true);
-                    ui.subtitle_label.set_visible(false);
-                    ui.popover_incorrect_password.set_visible(true);
-                    ui.label_incorrect_password.set_text(&message.to_string());
+                    context.stack.set_visible_child(&context.stack_entry_password);
+                    context.button_open.set_visible(false);
+                    context.button_close.set_visible(true);
+                    context.subtitle_label.set_visible(false);
+                    context.popover_incorrect_password.set_visible(true);
+                    context.label_incorrect_password.set_text(&message.to_string());
                     return ();
                 }
                 Ok(_) => {}
             }
 
-            let db = Database::open(& mut name.unwrap(), Some(&ui.entry_password.text()), None);
+            let db = Database::open(& mut name.unwrap(), Some(&context.entry_password.text()), None);
 
             match db {
                 Err(message) => {
-                    ui.stack.set_visible_child(&ui.stack_entry_password);
-                    ui.button_open.set_visible(false);
-                    ui.button_close.set_visible(true);
-                    ui.subtitle_label.set_visible(false);
-                    ui.popover_incorrect_password.set_visible(true);
-                    ui.label_incorrect_password.set_text(&message.to_string());
+                    context.stack.set_visible_child(&context.stack_entry_password);
+                    context.button_open.set_visible(false);
+                    context.button_close.set_visible(true);
+                    context.subtitle_label.set_visible(false);
+                    context.popover_incorrect_password.set_visible(true);
+                    context.label_incorrect_password.set_text(&message.to_string());
+                    return ();
                 }
                 Ok(database) => {
                     let mut data: Vec<Element> = Vec::new();
@@ -222,28 +221,34 @@ fn fsm(application: &Application) {
 
                     column.pack_start(&cell, true);
                     column.add_attribute(&cell, "text", 0);
-                    ui.view.append_column(&column);
-                    ui.view.set_model(Some(&convert_model(&data)));
+                    context.view.append_column(&column);
+                    context.view.set_model(Some(&convert_model(&data)));
 
-                    ui.view.connect_cursor_changed(glib::clone!(@weak ui => move |tree_view| {
+                    let cursor_changed_context = unlock_context.clone();
+                    context.view.connect_cursor_changed(move |tree_view| {
+                        let context = cursor_changed_context.borrow();
                         let (path, _) = tree_view.selection().selected_rows();
                         let current_entry = &data[path[0].indices()[0] as usize];
-                        ui.current_entry_label
+                        context.current_entry_label
                             .set_label(&current_entry.username.clone());
-                        ui.current_password_label
+                        context.current_password_label
                             .set_label(&current_entry.password.clone());
-                    }));
+                    });
+                    context.current = State::Unlocked;
                 }
             }
-        }));
-    ui.window.show_all();
+        });
+
+    application.connect_activate(move |_| {
+        context.borrow().window.show_all();
+    });
 }
 
 fn main() {
     let kqpr = Application::builder()
         .application_id("net.senier.kqpr")
         .build();
-    kqpr.connect_activate(move |application| {
+    kqpr.connect_startup(move |application| {
         fsm(application);
     });
     kqpr.run();

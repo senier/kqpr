@@ -74,7 +74,7 @@
               </packing>
             </child>
             <child>
-              <object class="GtkBox" id="stack_entry_unlock">
+              <object class="GtkBox">
                 <property name="visible">True</property>
                 <property name="can-focus">False</property>
                 <child>
