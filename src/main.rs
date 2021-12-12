@@ -5,7 +5,7 @@ use gtk::glib::Bytes;
 use gtk::prelude::*;
 use gtk::{
     Application, ApplicationWindow, Box, Builder, Button, CellRendererText, CssProvider, Entry,
-    FileChooserAction, FileChooserDialog, Image, Label, ListStore, Popover, ResponseType, Stack,
+    FileChooserAction, FileChooserDialog, FileFilter, Image, Label, ListStore, Popover, ResponseType, Stack,
     StyleContext, TreeView, TreeViewColumn,
 };
 use keepass::{Database, NodeRef};
@@ -142,6 +142,11 @@ fn fsm(application: &Application) {
             ("Open", gtk::ResponseType::Ok),
             ("Cancel", gtk::ResponseType::Cancel),
         ]);
+
+        let filter = FileFilter::new();
+        filter.add_pattern("*.kdbx");
+        filter.set_name(Some("KDBX 4 password database"));
+        dialog.add_filter(&filter);
 
         let dialog_context = open_context.clone();
         dialog.connect_response(move |dialog, response| {

@@ -1,10 +1,9 @@
-- Filter file extension on open
 - Refactor UI handling
 - Use macro for passing mutable context into Gtk handler
 - Unlock database on Enter
-- Make decryption asynchronous
 - Add icon to make password visible
 - Add logo to locked screen
+- Make decryption asynchronous
 - Implement search
 - Implement WIFI tag
 - Honor WiFi standard
