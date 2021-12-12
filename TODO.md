@@ -1,9 +1,11 @@
-- Generate QR code
+- Filter file extension on open
 - Refactor UI handling
+- Use macro for passing mutable context into Gtk handler
 - Unlock database on Enter
 - Make decryption asynchronous
 - Add icon to make password visible
-- Make subtitle non-bold
 - Add logo to locked screen
 - Implement search
-- Implement WIFI tag (with optional standard)
+- Implement WIFI tag
+- Honor WiFi standard
+- Fix dependency versions in Cargo.toml

@@ -198,10 +198,9 @@
                   </packing>
                 </child>
                 <child>
-                  <object class="GtkLabel" id="current_password">
+                  <object class="GtkSeparator">
                     <property name="visible">True</property>
                     <property name="can-focus">False</property>
-                    <property name="label" translatable="yes">label</property>
                   </object>
                   <packing>
                     <property name="expand">False</property>
@@ -210,9 +209,10 @@
                   </packing>
                 </child>
                 <child>
-                  <object class="GtkDrawingArea" id="image_qr_code">
+                  <object class="GtkImage" id="image_qr_code">
                     <property name="visible">True</property>
                     <property name="can-focus">False</property>
+                    <property name="stock">gtk-missing-image</property>
                   </object>
                   <packing>
                     <property name="expand">True</property>
@@ -269,6 +269,10 @@
                 <property name="margin-end">5</property>
                 <property name="label" translatable="yes">&lt;path&gt;</property>
                 <property name="ellipsize">start</property>
+                <attributes>
+                  <attribute name="style" value="normal"/>
+                  <attribute name="weight" value="ultralight"/>
+                </attributes>
                 <style>
                   <class name="title"/>
                 </style>

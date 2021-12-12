@@ -1,11 +1,16 @@
 use gdk::Screen;
+use gtk::gdk_pixbuf::Pixbuf;
+use gtk::gio::{Cancellable, MemoryInputStream};
+use gtk::glib::Bytes;
 use gtk::prelude::*;
 use gtk::{
     Application, ApplicationWindow, Box, Builder, Button, CellRendererText, CssProvider, Entry,
-    FileChooserAction, FileChooserDialog, Label, ListStore, Popover, ResponseType, Stack,
+    FileChooserAction, FileChooserDialog, Image, Label, ListStore, Popover, ResponseType, Stack,
     StyleContext, TreeView, TreeViewColumn,
 };
 use keepass::{Database, NodeRef};
+use qrcode::render::svg;
+use qrcode::{EcLevel, QrCode, Version};
 use std::cell::RefCell;
 use std::fs::File;
 use std::path::PathBuf;
@@ -47,7 +52,7 @@ struct Context {
     button_unlock: Button,
     view: TreeView,
     current_entry_label: Label,
-    current_password_label: Label,
+    image_qr_code: Image,
     subtitle_label: Label,
     stack: Stack,
     stack_entry_no_database: Box,
@@ -86,9 +91,9 @@ impl Context {
             current_entry_label: builder
                 .object("current_entry")
                 .expect("Current entry label not found"),
-            current_password_label: builder
-                .object("current_password")
-                .expect("Current password label not found"),
+            image_qr_code: builder
+                .object("image_qr_code")
+                .expect("QR code image not found"),
             subtitle_label: builder
                 .object("label_subtitle")
                 .expect("Subtitle label not found"),
@@ -118,132 +123,172 @@ impl Context {
 }
 
 fn fsm(application: &Application) {
-
     let context = Rc::new(RefCell::new(Context::new()));
 
     context.borrow().window.set_application(Some(application));
 
     let open_context = context.clone();
-    context.borrow().button_open
-        .connect_clicked(move |_| {
-            let context = open_context.borrow_mut();
-            assert!(context.current == State::Empty);
+    context.borrow().button_open.connect_clicked(move |_| {
+        let context = open_context.borrow_mut();
+        assert!(context.current == State::Empty);
 
-            let dialog = FileChooserDialog::new(
-                Some("Open File"),
-                Some(&context.window),
-                FileChooserAction::Open,
-            );
+        let dialog = FileChooserDialog::new(
+            Some("Open File"),
+            Some(&context.window),
+            FileChooserAction::Open,
+        );
 
-            dialog.add_buttons(&[
-                ("Open", gtk::ResponseType::Ok),
-                ("Cancel", gtk::ResponseType::Cancel),
-            ]);
+        dialog.add_buttons(&[
+            ("Open", gtk::ResponseType::Ok),
+            ("Cancel", gtk::ResponseType::Cancel),
+        ]);
 
-            let dialog_context = open_context.clone();
-            dialog.connect_response(move |dialog, response| {
-                let mut context = dialog_context.borrow_mut();
-                if response == ResponseType::Ok {
-                    context.file = Some(dialog.filename().expect("No filename selected"));
-                    context.stack.set_visible_child(&context.stack_entry_password);
-                    context.button_open.set_visible(false);
-                    context.button_close.set_visible(true);
-                    context.subtitle_label.set_text(context.file.clone().unwrap().to_str().unwrap());
-                    context.subtitle_label.set_visible(true);
-                    context.current = State::Locked;
-                }
-                dialog.close();
-            });
-            dialog.show_all();
+        let dialog_context = open_context.clone();
+        dialog.connect_response(move |dialog, response| {
+            let mut context = dialog_context.borrow_mut();
+            if response == ResponseType::Ok {
+                context.file = Some(dialog.filename().expect("No filename selected"));
+                context
+                    .stack
+                    .set_visible_child(&context.stack_entry_password);
+                context.button_open.set_visible(false);
+                context.button_close.set_visible(true);
+                context
+                    .subtitle_label
+                    .set_text(context.file.clone().unwrap().to_str().unwrap());
+                context.subtitle_label.set_visible(true);
+                context.current = State::Locked;
+            }
+            dialog.close();
         });
+        dialog.show_all();
+    });
 
     let close_context = context.clone();
-    context.borrow().button_close
-        .connect_clicked(move |_| {
-            let mut context = close_context.borrow_mut();
-            assert!(context.current == State::Locked || context.current == State::Unlocked);
+    context.borrow().button_close.connect_clicked(move |_| {
+        let mut context = close_context.borrow_mut();
+        assert!(context.current == State::Locked || context.current == State::Unlocked);
 
-            context.stack.set_visible_child(&context.stack_entry_no_database);
-            context.button_open.set_visible(true);
-            context.button_close.set_visible(false);
-            context.subtitle_label.set_visible(false);
-            context.current = State::Empty;
-        });
+        context
+            .stack
+            .set_visible_child(&context.stack_entry_no_database);
+        context.button_open.set_visible(true);
+        context.button_close.set_visible(false);
+        context.subtitle_label.set_visible(false);
+        context.current = State::Empty;
+    });
 
     let unlock_context = context.clone();
-    context.borrow().button_unlock
-        .connect_clicked(move |_| {
-            let mut context = unlock_context.borrow_mut();
-            assert!(context.current == State::Locked);
+    context.borrow().button_unlock.connect_clicked(move |_| {
+        let mut context = unlock_context.borrow_mut();
+        assert!(context.current == State::Locked);
 
-            let name = File::open(context.file.clone().unwrap().into_os_string());
-            match name {
-                Err(message) => {
-                    context.stack.set_visible_child(&context.stack_entry_password);
-                    context.button_open.set_visible(false);
-                    context.button_close.set_visible(true);
-                    context.subtitle_label.set_visible(true);
-                    context.popover_incorrect_password.set_visible(true);
-                    context.label_incorrect_password.set_text(&message.to_string());
-                    return ();
-                }
-                Ok(_) => {}
+        let name = File::open(context.file.clone().unwrap().into_os_string());
+        match name {
+            Err(message) => {
+                context
+                    .stack
+                    .set_visible_child(&context.stack_entry_password);
+                context.button_open.set_visible(false);
+                context.button_close.set_visible(true);
+                context.subtitle_label.set_visible(true);
+                context.popover_incorrect_password.set_visible(true);
+                context
+                    .label_incorrect_password
+                    .set_text(&message.to_string());
+                return ();
             }
+            Ok(_) => {}
+        }
 
-            let db = Database::open(& mut name.unwrap(), Some(&context.entry_password.text()), None);
+        let db = Database::open(
+            &mut name.unwrap(),
+            Some(&context.entry_password.text()),
+            None,
+        );
 
-            match db {
-                Err(message) => {
-                    context.stack.set_visible_child(&context.stack_entry_password);
-                    context.button_open.set_visible(false);
-                    context.button_close.set_visible(true);
-                    context.subtitle_label.set_visible(true);
-                    context.popover_incorrect_password.set_visible(true);
-                    context.label_incorrect_password.set_text(&message.to_string());
-                    return ();
-                }
-                Ok(database) => {
-                    let mut data: Vec<Element> = Vec::new();
-                    for node in &database.root {
-                        match node {
-                            NodeRef::Group(_) => {}
-                            NodeRef::Entry(e) => {
-                                data.push(Element {
-                                    title: e.get_title().unwrap().to_string(),
-                                    username: e.get_username().unwrap().to_string(),
-                                    password: e.get_password().unwrap().to_string(),
-                                });
-                            }
+        match db {
+            Err(message) => {
+                context
+                    .stack
+                    .set_visible_child(&context.stack_entry_password);
+                context.button_open.set_visible(false);
+                context.button_close.set_visible(true);
+                context.subtitle_label.set_visible(true);
+                context.popover_incorrect_password.set_visible(true);
+                context
+                    .label_incorrect_password
+                    .set_text(&message.to_string());
+                return ();
+            }
+            Ok(database) => {
+                let mut data: Vec<Element> = Vec::new();
+                for node in &database.root {
+                    match node {
+                        NodeRef::Group(_) => {}
+                        NodeRef::Entry(e) => {
+                            data.push(Element {
+                                title: e.get_title().unwrap().to_string(),
+                                username: e.get_username().unwrap().to_string(),
+                                password: e.get_password().unwrap().to_string(),
+                            });
                         }
                     }
-                    let column = TreeViewColumn::new();
-                    let cell = CellRendererText::new();
-
-                    column.pack_start(&cell, true);
-                    column.add_attribute(&cell, "text", 0);
-                    context.view.append_column(&column);
-                    context.view.set_model(Some(&convert_model(&data)));
-
-                    let cursor_changed_context = unlock_context.clone();
-                    context.view.connect_cursor_changed(move |tree_view| {
-                        let context = cursor_changed_context.borrow();
-                        let (path, _) = tree_view.selection().selected_rows();
-                        let current_entry = &data[path[0].indices()[0] as usize];
-                        context.current_entry_label
-                            .set_label(&current_entry.username.clone());
-                        context.current_password_label
-                            .set_label(&current_entry.password.clone());
-                    });
-                    context.stack.set_visible_child(&context.stack_entry_database);
-                    context.button_open.set_visible(false);
-                    context.button_close.set_visible(true);
-                    context.subtitle_label.set_visible(true);
-                    context.entry_password.set_text("");
-
-                    context.current = State::Unlocked;
                 }
+                let column = TreeViewColumn::new();
+                let cell = CellRendererText::new();
+
+                column.pack_start(&cell, true);
+                column.add_attribute(&cell, "text", 0);
+                context.view.append_column(&column);
+                context.view.set_model(Some(&convert_model(&data)));
+
+                let cursor_changed_context = unlock_context.clone();
+                context.view.connect_cursor_changed(move |tree_view| {
+                    let context = cursor_changed_context.borrow();
+                    let (path, _) = tree_view.selection().selected_rows();
+                    let current_entry = &data[path[0].indices()[0] as usize];
+                    let qr_data = format!(
+                        "WIFI:S:{};T:WPA2;P:{};;",
+                        &current_entry.username.clone(),
+                        &current_entry.password.clone()
+                    );
+                    let code =
+                        QrCode::with_version(qr_data.as_bytes(), Version::Normal(4), EcLevel::L)
+                            .unwrap();
+                    let image = code
+                        .render()
+                        .min_dimensions(200, 200)
+                        .dark_color(svg::Color("#000000"))
+                        .light_color(svg::Color("rgba(0,0,0,0)"))
+                        .build();
+                    let s = MemoryInputStream::from_bytes(&Bytes::from(image.as_bytes()));
+
+                    context
+                        .current_entry_label
+                        .set_label(&current_entry.username.clone());
+
+                    match Pixbuf::from_stream::<MemoryInputStream, Cancellable>(&s, None) {
+                        Err(why) => {
+                            println!("Error: {}", why);
+                        }
+                        Ok(pixbuf) => {
+                            context.image_qr_code.set_from_pixbuf(Some(&pixbuf));
+                        }
+                    }
+                });
+                context
+                    .stack
+                    .set_visible_child(&context.stack_entry_database);
+                context.button_open.set_visible(false);
+                context.button_close.set_visible(true);
+                context.subtitle_label.set_visible(true);
+                context.entry_password.set_text("");
+
+                context.current = State::Unlocked;
             }
-        });
+        }
+    });
 
     application.connect_activate(move |_| {
         context.borrow().window.show_all();
