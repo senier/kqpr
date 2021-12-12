@@ -1,10 +1,9 @@
-- Create GTK window
-   - header bar: open button
-   - left: tree (folders, entries)
-   - above tree: search field
-   - right: barcode
-- open KDBX file
-   - Fill list with WiFi entries
-   - when entry is clicked
-      - create QR code from password
-      - set image to QR code
+- Generate QR code
+- Refactor UI handling
+- Unlock database on Enter
+- Make decryption asynchronous
+- Add icon to make password visible
+- Make subtitle non-bold
+- Add logo to locked screen
+- Implement search
+- Implement WIFI tag (with optional standard)

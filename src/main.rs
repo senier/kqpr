@@ -148,8 +148,8 @@ fn fsm(application: &Application) {
                     context.stack.set_visible_child(&context.stack_entry_password);
                     context.button_open.set_visible(false);
                     context.button_close.set_visible(true);
-                    context.subtitle_label.set_visible(true);
                     context.subtitle_label.set_text(context.file.clone().unwrap().to_str().unwrap());
+                    context.subtitle_label.set_visible(true);
                     context.current = State::Locked;
                 }
                 dialog.close();
@@ -182,7 +182,7 @@ fn fsm(application: &Application) {
                     context.stack.set_visible_child(&context.stack_entry_password);
                     context.button_open.set_visible(false);
                     context.button_close.set_visible(true);
-                    context.subtitle_label.set_visible(false);
+                    context.subtitle_label.set_visible(true);
                     context.popover_incorrect_password.set_visible(true);
                     context.label_incorrect_password.set_text(&message.to_string());
                     return ();
@@ -197,7 +197,7 @@ fn fsm(application: &Application) {
                     context.stack.set_visible_child(&context.stack_entry_password);
                     context.button_open.set_visible(false);
                     context.button_close.set_visible(true);
-                    context.subtitle_label.set_visible(false);
+                    context.subtitle_label.set_visible(true);
                     context.popover_incorrect_password.set_visible(true);
                     context.label_incorrect_password.set_text(&message.to_string());
                     return ();
@@ -234,6 +234,12 @@ fn fsm(application: &Application) {
                         context.current_password_label
                             .set_label(&current_entry.password.clone());
                     });
+                    context.stack.set_visible_child(&context.stack_entry_database);
+                    context.button_open.set_visible(false);
+                    context.button_close.set_visible(true);
+                    context.subtitle_label.set_visible(true);
+                    context.entry_password.set_text("");
+
                     context.current = State::Unlocked;
                 }
             }
