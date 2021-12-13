@@ -122,7 +122,7 @@ impl Context {
     }
 }
 
-fn fsm(application: &Application) {
+fn kqpr(application: &Application) {
     let context = Rc::new(RefCell::new(Context::new()));
 
     context.borrow().window.set_application(Some(application));
@@ -301,11 +301,11 @@ fn fsm(application: &Application) {
 }
 
 fn main() {
-    let kqpr = Application::builder()
+    let app = Application::builder()
         .application_id("net.senier.kqpr")
         .build();
-    kqpr.connect_startup(move |application| {
-        fsm(application);
+    app.connect_startup(move |application| {
+        kqpr(application);
     });
-    kqpr.run();
+    app.run();
 }
