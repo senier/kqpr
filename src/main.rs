@@ -5,8 +5,8 @@ use gtk::glib::Bytes;
 use gtk::prelude::*;
 use gtk::{
     Application, ApplicationWindow, Box, Builder, Button, CellRendererText, CssProvider, Entry,
-    FileChooserAction, FileChooserDialog, FileFilter, Image, Label, ListStore, Popover, ResponseType, Stack,
-    StyleContext, TreeView, TreeViewColumn,
+    FileChooserAction, FileChooserDialog, FileFilter, Image, Label, ListStore, Popover,
+    ResponseType, Stack, StyleContext, TreeView, TreeViewColumn,
 };
 use keepass::{Database, NodeRef};
 use qrcode::render::svg;
@@ -120,6 +120,33 @@ impl Context {
             file: None,
         }
     }
+
+    fn ui_switch_locked(&mut self, file: PathBuf) {
+        self.file = Some(file);
+        self.stack.set_visible_child(&self.stack_entry_password);
+        self.button_open.set_visible(false);
+        self.button_close.set_visible(true);
+        self.subtitle_label
+            .set_text(self.file.clone().unwrap().to_str().unwrap());
+        self.subtitle_label.set_visible(true);
+        self.current = State::Locked;
+    }
+}
+
+fn file_chooser(window: &ApplicationWindow) -> FileChooserDialog {
+    let dialog = FileChooserDialog::new(Some("Open File"), Some(window), FileChooserAction::Open);
+
+    dialog.add_buttons(&[
+        ("Open", gtk::ResponseType::Ok),
+        ("Cancel", gtk::ResponseType::Cancel),
+    ]);
+
+    let filter = FileFilter::new();
+    filter.add_pattern("*.kdbx");
+    filter.set_name(Some("KDBX 4 password database"));
+    dialog.add_filter(&filter);
+
+    dialog
 }
 
 fn kqpr(application: &Application) {
@@ -127,42 +154,19 @@ fn kqpr(application: &Application) {
 
     context.borrow().window.set_application(Some(application));
 
+    // State::Open
     let open_context = context.clone();
     context.borrow().button_open.connect_clicked(move |_| {
         let context = open_context.borrow_mut();
         assert!(context.current == State::Empty);
 
-        let dialog = FileChooserDialog::new(
-            Some("Open File"),
-            Some(&context.window),
-            FileChooserAction::Open,
-        );
-
-        dialog.add_buttons(&[
-            ("Open", gtk::ResponseType::Ok),
-            ("Cancel", gtk::ResponseType::Cancel),
-        ]);
-
-        let filter = FileFilter::new();
-        filter.add_pattern("*.kdbx");
-        filter.set_name(Some("KDBX 4 password database"));
-        dialog.add_filter(&filter);
-
+        let dialog = file_chooser(&context.window);
         let dialog_context = open_context.clone();
         dialog.connect_response(move |dialog, response| {
-            let mut context = dialog_context.borrow_mut();
             if response == ResponseType::Ok {
-                context.file = Some(dialog.filename().expect("No filename selected"));
-                context
-                    .stack
-                    .set_visible_child(&context.stack_entry_password);
-                context.button_open.set_visible(false);
-                context.button_close.set_visible(true);
-                context
-                    .subtitle_label
-                    .set_text(context.file.clone().unwrap().to_str().unwrap());
-                context.subtitle_label.set_visible(true);
-                context.current = State::Locked;
+                dialog_context
+                    .borrow_mut()
+                    .ui_switch_locked(dialog.filename().expect("No filename selected"));
             }
             dialog.close();
         });
