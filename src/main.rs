@@ -22,19 +22,6 @@ struct Element {
     password: String,
 }
 
-fn convert_model(model: &Vec<Element>) -> ListStore {
-    let result: ListStore = ListStore::new(&[String::static_type()]);
-    for Element {
-        title,
-        username: _,
-        password: _,
-    } in model
-    {
-        result.insert_with_values(None, &[(0, title)]);
-    }
-    result.clone()
-}
-
 #[derive(PartialEq, Clone)]
 enum State {
     Empty,
@@ -173,6 +160,77 @@ impl Context {
         self.current = State::Empty;
     }
 
+    fn set_model(&self, model: &Vec<Element>) {
+        let data: ListStore = ListStore::new(&[String::static_type()]);
+        for Element {
+            title,
+            username: _,
+            password: _,
+        } in model
+        {
+            data.insert_with_values(None, &[(0, title)]);
+        }
+        self.view.set_model(Some(&data));
+    }
+
+    fn wifi_qr_code(&self, username: &str, password: &str) -> MemoryInputStream {
+        let qr_data = format!("WIFI:S:{};T:WPA2;P:{};;", &username, &password);
+        let code =
+            QrCode::with_version(qr_data.as_bytes(), Version::Normal(4), EcLevel::L).unwrap();
+        let image = code
+            .render()
+            .min_dimensions(200, 200)
+            .dark_color(svg::Color("#000000"))
+            .light_color(svg::Color("rgba(0,0,0,0)"))
+            .build();
+        MemoryInputStream::from_bytes(&Bytes::from(image.as_bytes()))
+    }
+
+    fn display_database(&self, database: Database, context: Rc<RefCell<Context>>) {
+        let mut data: Vec<Element> = Vec::new();
+        for node in &database.root {
+            match node {
+                NodeRef::Group(_) => {}
+                NodeRef::Entry(e) => {
+                    data.push(Element {
+                        title: e.get_title().unwrap().to_string(),
+                        username: e.get_username().unwrap().to_string(),
+                        password: e.get_password().unwrap().to_string(),
+                    });
+                }
+            }
+        }
+        let column = TreeViewColumn::new();
+        let cell = CellRendererText::new();
+
+        column.pack_start(&cell, true);
+        column.add_attribute(&cell, "text", 0);
+        self.view.append_column(&column);
+        self.set_model(&data);
+
+        let context = context.clone();
+        self.view.connect_cursor_changed(move |tree_view| {
+            let (path, _) = tree_view.selection().selected_rows();
+            let entry = &data[path[0].indices()[0] as usize];
+            let qr_code = context
+                .borrow()
+                .wifi_qr_code(&entry.username.clone(), &entry.password.clone());
+            match Pixbuf::from_stream::<MemoryInputStream, Cancellable>(&qr_code, None) {
+                Ok(p) => {
+                    context.borrow().image_qr_code.set_from_pixbuf(Some(&p));
+                }
+                Err(why) => {
+                    println!("Error: {}", why);
+                }
+            }
+
+            context
+                .borrow()
+                .current_entry_label
+                .set_label(&entry.username.clone());
+        });
+    }
+
     fn ui_show_error(&self, message: &str) {
         self.stack.set_visible_child(&self.stack_entry_password);
         self.button_open.set_visible(false);
@@ -184,87 +242,26 @@ impl Context {
 
     fn ui_switch_unlocked(&mut self, context: Rc<RefCell<Context>>) {
         assert!(self.current == State::Locked);
-        let name = File::open(self.file.clone().unwrap().into_os_string());
-        match name {
-            Err(message) => {
-                self.ui_show_error(&message.to_string());
-                return ();
-            }
-            Ok(_) => {}
-        }
 
-        let db = Database::open(&mut name.unwrap(), Some(&self.entry_password.text()), None);
-
-        match db {
-            Err(message) => {
-                self.ui_show_error(&message.to_string());
-                return ();
-            }
-            Ok(database) => {
-                let mut data: Vec<Element> = Vec::new();
-                for node in &database.root {
-                    match node {
-                        NodeRef::Group(_) => {}
-                        NodeRef::Entry(e) => {
-                            data.push(Element {
-                                title: e.get_title().unwrap().to_string(),
-                                username: e.get_username().unwrap().to_string(),
-                                password: e.get_password().unwrap().to_string(),
-                            });
-                        }
+        match File::open(self.file.clone().unwrap().into_os_string()) {
+            Ok(mut file) => {
+                match Database::open(&mut file, Some(&self.entry_password.text()), None) {
+                    Ok(db) => {
+                        self.display_database(db, context.clone());
+                        self.stack.set_visible_child(&self.stack_entry_database);
+                        self.button_open.set_visible(false);
+                        self.button_close.set_visible(true);
+                        self.subtitle_label.set_visible(true);
+                        self.entry_password.set_text("");
+                        self.current = State::Unlocked;
+                    }
+                    Err(message) => {
+                        self.ui_show_error(&message.to_string());
                     }
                 }
-                let column = TreeViewColumn::new();
-                let cell = CellRendererText::new();
-
-                column.pack_start(&cell, true);
-                column.add_attribute(&cell, "text", 0);
-                self.view.append_column(&column);
-                self.view.set_model(Some(&convert_model(&data)));
-
-                let cursor_context = context.clone();
-                self.view.connect_cursor_changed(move |tree_view| {
-                    let (path, _) = tree_view.selection().selected_rows();
-                    let current_entry = &data[path[0].indices()[0] as usize];
-                    let qr_data = format!(
-                        "WIFI:S:{};T:WPA2;P:{};;",
-                        &current_entry.username.clone(),
-                        &current_entry.password.clone()
-                    );
-                    let code =
-                        QrCode::with_version(qr_data.as_bytes(), Version::Normal(4), EcLevel::L)
-                            .unwrap();
-                    let image = code
-                        .render()
-                        .min_dimensions(200, 200)
-                        .dark_color(svg::Color("#000000"))
-                        .light_color(svg::Color("rgba(0,0,0,0)"))
-                        .build();
-                    let s = MemoryInputStream::from_bytes(&Bytes::from(image.as_bytes()));
-
-                    cursor_context
-                        .borrow()
-                        .current_entry_label
-                        .set_label(&current_entry.username.clone());
-
-                    match Pixbuf::from_stream::<MemoryInputStream, Cancellable>(&s, None) {
-                        Err(why) => {
-                            println!("Error: {}", why);
-                        }
-                        Ok(pixbuf) => {
-                            cursor_context
-                                .borrow()
-                                .image_qr_code
-                                .set_from_pixbuf(Some(&pixbuf));
-                        }
-                    }
-                });
-                self.stack.set_visible_child(&self.stack_entry_database);
-                self.button_open.set_visible(false);
-                self.button_close.set_visible(true);
-                self.subtitle_label.set_visible(true);
-                self.entry_password.set_text("");
-                self.current = State::Unlocked;
+            }
+            Err(message) => {
+                self.ui_show_error(&message.to_string());
             }
         }
     }
