@@ -208,26 +208,24 @@ impl Context {
         self.view.append_column(&column);
         self.set_model(&data);
 
-        let context = context.clone();
+        let cursor_context = context.clone();
         self.view.connect_cursor_changed(move |tree_view| {
+            let context = cursor_context.borrow();
             let (path, _) = tree_view.selection().selected_rows();
             let entry = &data[path[0].indices()[0] as usize];
-            let qr_code = context
-                .borrow()
-                .wifi_qr_code(&entry.username.clone(), &entry.password.clone());
+            let qr_code = context.wifi_qr_code(&entry.username.clone(), &entry.password.clone());
             match Pixbuf::from_stream::<MemoryInputStream, Cancellable>(&qr_code, None) {
-                Ok(p) => {
-                    context.borrow().image_qr_code.set_from_pixbuf(Some(&p));
+                Ok(pixbuf) => {
+                    context.image_qr_code.set_from_pixbuf(Some(&pixbuf));
                 }
                 Err(why) => {
                     println!("Error: {}", why);
                 }
             }
-
             context
-                .borrow()
                 .current_entry_label
                 .set_label(&entry.username.clone());
+            context.image_qr_code.set_visible(true);
         });
     }
 
@@ -252,6 +250,7 @@ impl Context {
                         self.button_open.set_visible(false);
                         self.button_close.set_visible(true);
                         self.subtitle_label.set_visible(true);
+                        self.image_qr_code.set_visible(false);
                         self.entry_password.set_text("");
                         self.current = State::Unlocked;
                     }
