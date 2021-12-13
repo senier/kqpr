@@ -1,5 +1,6 @@
 - Refactor UI handling
 - Use macro for passing mutable context into Gtk handler
+- Handle all unwrap()/expect() outside UI setup
 - Unlock database on Enter
 - Add icon to make password visible
 - Add logo to locked screen
