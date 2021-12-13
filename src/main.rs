@@ -121,16 +121,47 @@ impl Context {
         }
     }
 
-    fn ui_switch_locked(&mut self, file: PathBuf) {
+    fn file_chooser(&self) -> FileChooserDialog {
+        let dialog = FileChooserDialog::new(
+            Some("Open File"),
+            Some(&self.window),
+            FileChooserAction::Open,
+        );
+
+        dialog.add_buttons(&[
+            ("Open", gtk::ResponseType::Ok),
+            ("Cancel", gtk::ResponseType::Cancel),
+        ]);
+
+        let filter = FileFilter::new();
+        filter.add_pattern("*.kdbx");
+        filter.set_name(Some("KDBX 4 password database"));
+        dialog.add_filter(&filter);
+
+        dialog
+    }
+
+    fn ui_switch_locked(&mut self, context: Rc<RefCell<Context>>) {
         assert!(self.current == State::Empty);
-        self.file = Some(file);
-        self.stack.set_visible_child(&self.stack_entry_password);
-        self.button_open.set_visible(false);
-        self.button_close.set_visible(true);
-        self.subtitle_label
-            .set_text(self.file.clone().unwrap().to_str().unwrap());
-        self.subtitle_label.set_visible(true);
-        self.current = State::Locked;
+        let dialog = self.file_chooser();
+        dialog.connect_response(move |dialog, response| {
+            if response == ResponseType::Ok {
+                let mut context = context.borrow_mut();
+                context.file = Some(dialog.filename().expect("No filename selected"));
+                context
+                    .stack
+                    .set_visible_child(&context.stack_entry_password);
+                context.button_open.set_visible(false);
+                context.button_close.set_visible(true);
+                context
+                    .subtitle_label
+                    .set_text(context.file.clone().unwrap().to_str().unwrap());
+                context.subtitle_label.set_visible(true);
+                context.current = State::Locked;
+            }
+            dialog.close();
+        });
+        dialog.show_all();
     }
 
     fn ui_switch_empty(&mut self) {
@@ -142,17 +173,21 @@ impl Context {
         self.current = State::Empty;
     }
 
+    fn ui_show_error(&self, message: &str) {
+        self.stack.set_visible_child(&self.stack_entry_password);
+        self.button_open.set_visible(false);
+        self.button_close.set_visible(true);
+        self.subtitle_label.set_visible(true);
+        self.popover_incorrect_password.set_visible(true);
+        self.label_incorrect_password.set_text(message);
+    }
+
     fn ui_switch_unlocked(&mut self, context: Rc<RefCell<Context>>) {
         assert!(self.current == State::Locked);
         let name = File::open(self.file.clone().unwrap().into_os_string());
         match name {
             Err(message) => {
-                self.stack.set_visible_child(&self.stack_entry_password);
-                self.button_open.set_visible(false);
-                self.button_close.set_visible(true);
-                self.subtitle_label.set_visible(true);
-                self.popover_incorrect_password.set_visible(true);
-                self.label_incorrect_password.set_text(&message.to_string());
+                self.ui_show_error(&message.to_string());
                 return ();
             }
             Ok(_) => {}
@@ -162,12 +197,7 @@ impl Context {
 
         match db {
             Err(message) => {
-                self.stack.set_visible_child(&self.stack_entry_password);
-                self.button_open.set_visible(false);
-                self.button_close.set_visible(true);
-                self.subtitle_label.set_visible(true);
-                self.popover_incorrect_password.set_visible(true);
-                self.label_incorrect_password.set_text(&message.to_string());
+                self.ui_show_error(&message.to_string());
                 return ();
             }
             Ok(database) => {
@@ -192,7 +222,7 @@ impl Context {
                 self.view.append_column(&column);
                 self.view.set_model(Some(&convert_model(&data)));
 
-                let context2 = context.clone();
+                let cursor_context = context.clone();
                 self.view.connect_cursor_changed(move |tree_view| {
                     let (path, _) = tree_view.selection().selected_rows();
                     let current_entry = &data[path[0].indices()[0] as usize];
@@ -212,7 +242,7 @@ impl Context {
                         .build();
                     let s = MemoryInputStream::from_bytes(&Bytes::from(image.as_bytes()));
 
-                    context2
+                    cursor_context
                         .borrow()
                         .current_entry_label
                         .set_label(&current_entry.username.clone());
@@ -222,7 +252,7 @@ impl Context {
                             println!("Error: {}", why);
                         }
                         Ok(pixbuf) => {
-                            context2
+                            cursor_context
                                 .borrow()
                                 .image_qr_code
                                 .set_from_pixbuf(Some(&pixbuf));
@@ -240,41 +270,15 @@ impl Context {
     }
 }
 
-fn file_chooser(window: &ApplicationWindow) -> FileChooserDialog {
-    let dialog = FileChooserDialog::new(Some("Open File"), Some(window), FileChooserAction::Open);
-
-    dialog.add_buttons(&[
-        ("Open", gtk::ResponseType::Ok),
-        ("Cancel", gtk::ResponseType::Cancel),
-    ]);
-
-    let filter = FileFilter::new();
-    filter.add_pattern("*.kdbx");
-    filter.set_name(Some("KDBX 4 password database"));
-    dialog.add_filter(&filter);
-
-    dialog
-}
-
 fn kqpr(application: &Application) {
     let context = Rc::new(RefCell::new(Context::new()));
-
-    context.borrow().window.set_application(Some(application));
 
     // State::Open
     let open_context = context.clone();
     context.borrow().button_open.connect_clicked(move |_| {
-        let dialog = file_chooser(&open_context.borrow_mut().window);
-        let dialog_context = open_context.clone();
-        dialog.connect_response(move |dialog, response| {
-            if response == ResponseType::Ok {
-                dialog_context
-                    .borrow_mut()
-                    .ui_switch_locked(dialog.filename().expect("No filename selected"));
-            }
-            dialog.close();
-        });
-        dialog.show_all();
+        open_context
+            .borrow_mut()
+            .ui_switch_locked(open_context.clone());
     });
 
     // State::Empty
@@ -291,6 +295,7 @@ fn kqpr(application: &Application) {
             .ui_switch_unlocked(unlock_context.clone());
     });
 
+    context.borrow().window.set_application(Some(application));
     application.connect_activate(move |_| {
         context.borrow().window.show_all();
     });
