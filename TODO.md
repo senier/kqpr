@@ -1,6 +1,4 @@
-- Use macro for passing mutable context into Gtk handler
 - Handle all unwrap()/expect() outside UI setup
-- Unlock database on Enter
 - Scale QR code with window size
 - Add icon to make password visible
 - Add logo to locked screen

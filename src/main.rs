@@ -291,6 +291,13 @@ fn kqpr(application: &Application) {
             .ui_switch_unlocked(unlock_context.clone());
     });
 
+    let entry_activated_context = context.clone();
+    context.borrow().entry_password.connect_activate(move |_| {
+        entry_activated_context
+            .borrow_mut()
+            .ui_switch_unlocked(entry_activated_context.clone());
+    });
+
     context.borrow().window.set_application(Some(application));
     application.connect_activate(move |_| {
         context.borrow().window.show_all();
