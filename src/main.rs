@@ -9,12 +9,8 @@ use gtk::{
     ResponseType, Stack, StyleContext, TreeView, TreeViewColumn,
 };
 use keepass::{Database, NodeRef};
-use qrcode::render::svg;
-use qrcode::{EcLevel, QrCode, Version};
-use std::cell::RefCell;
-use std::fs::File;
-use std::path::PathBuf;
-use std::rc::Rc;
+use qrcode::{render::svg, EcLevel, QrCode, Version};
+use std::{cell::RefCell, fs::File, path::PathBuf, rc::Rc};
 
 struct Element {
     title: String,
@@ -22,7 +18,7 @@ struct Element {
     password: String,
 }
 
-#[derive(PartialEq, Clone)]
+#[derive(PartialEq, Clone, Debug)]
 enum State {
     Empty,
     Locked,
@@ -33,6 +29,11 @@ enum State {
 struct Context {
     current: State,
     file: Option<PathBuf>,
+}
+
+#[derive(glib::Downgrade)]
+pub struct UI {
+    context: Rc<RefCell<Context>>,
     window: ApplicationWindow,
     button_open: Button,
     button_close: Button,
@@ -50,9 +51,8 @@ struct Context {
     entry_password: Entry,
 }
 
-impl Context {
-    fn new() -> Context {
-        let builder: Builder = Builder::from_string(include_str!("ui.glade"));
+impl UI {
+    fn new() -> UI {
         let css_provider = CssProvider::new();
         let style = include_bytes!("style.css");
         css_provider
@@ -63,7 +63,12 @@ impl Context {
             &css_provider,
             gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
         );
-        Context {
+        let builder: Builder = Builder::from_string(include_str!("ui.glade"));
+        UI {
+            context: Rc::new(RefCell::new(Context {
+                current: State::Empty,
+                file: None,
+            })),
             window: builder.object("window_main").expect("Window not found"),
             button_open: builder
                 .object("button_open")
@@ -103,9 +108,33 @@ impl Context {
             entry_password: builder
                 .object("entry_password")
                 .expect("Password entry not found"),
-            current: State::Empty,
-            file: None,
         }
+    }
+
+    fn initialize(&self) {
+        self.ui_switch_empty();
+
+        self.button_open
+            .connect_clicked(glib::clone!(@weak self as ui => move |_| {
+                ui.ui_switch_locked();
+            }));
+
+        self.button_close
+            .connect_clicked(glib::clone!(@weak self as ui => move |_| {
+                ui.ui_switch_empty();
+            }));
+
+        self.button_unlock
+            .connect_clicked(glib::clone!(@weak self as ui => move |_| {
+                ui.ui_switch_unlocked();
+            }));
+
+        self.entry_password
+            .connect_activate(glib::clone!(@weak self as ui => move |_| {
+                ui.ui_switch_unlocked();
+            }));
+
+        self.window.show_all();
     }
 
     fn file_chooser(&self) -> FileChooserDialog {
@@ -128,36 +157,32 @@ impl Context {
         dialog
     }
 
-    fn ui_switch_locked(&mut self, context: Rc<RefCell<Context>>) {
-        assert!(self.current == State::Empty);
+    fn ui_switch_locked(self) {
+        assert!(self.context.borrow().current == State::Empty);
         let dialog = self.file_chooser();
-        dialog.connect_response(move |dialog, response| {
+        dialog.connect_response(glib::clone!(@weak self as ui => move |dialog, response| {
+            let mut context = self.context.borrow_mut();
             if response == ResponseType::Ok {
-                let mut context = context.borrow_mut();
                 context.file = Some(dialog.filename().expect("No filename selected"));
-                context
-                    .stack
-                    .set_visible_child(&context.stack_entry_password);
-                context.button_open.set_visible(false);
-                context.button_close.set_visible(true);
-                context
-                    .subtitle_label
-                    .set_text(context.file.clone().unwrap().to_str().unwrap());
-                context.subtitle_label.set_visible(true);
+                ui.stack.set_visible_child(&ui.stack_entry_password);
+                ui.button_open.set_visible(false);
+                ui.button_close.set_visible(true);
+                ui.subtitle_label.set_text(context.file.clone().unwrap().to_str().unwrap());
+                ui.subtitle_label.set_visible(true);
                 context.current = State::Locked;
             }
             dialog.close();
-        });
+        }));
         dialog.show_all();
     }
 
-    fn ui_switch_empty(&mut self) {
-        assert!(self.current == State::Locked || self.current == State::Unlocked);
+    fn ui_switch_empty(&self) {
+        let mut context = self.context.borrow_mut();
         self.stack.set_visible_child(&self.stack_entry_no_database);
         self.button_open.set_visible(true);
         self.button_close.set_visible(false);
         self.subtitle_label.set_visible(false);
-        self.current = State::Empty;
+        context.current = State::Empty;
     }
 
     fn set_model(&self, model: &Vec<Element>) {
@@ -186,7 +211,7 @@ impl Context {
         MemoryInputStream::from_bytes(&Bytes::from(image.as_bytes()))
     }
 
-    fn display_database(&self, database: Database, context: Rc<RefCell<Context>>) {
+    fn display_database(&self, database: Database) {
         let mut data: Vec<Element> = Vec::new();
         for node in &database.root {
             match node {
@@ -208,25 +233,22 @@ impl Context {
         self.view.append_column(&column);
         self.set_model(&data);
 
-        let cursor_context = context.clone();
-        self.view.connect_cursor_changed(move |tree_view| {
-            let context = cursor_context.borrow();
-            let (path, _) = tree_view.selection().selected_rows();
-            let entry = &data[path[0].indices()[0] as usize];
-            let qr_code = context.wifi_qr_code(&entry.username.clone(), &entry.password.clone());
-            match Pixbuf::from_stream::<MemoryInputStream, Cancellable>(&qr_code, None) {
-                Ok(pixbuf) => {
-                    context.image_qr_code.set_from_pixbuf(Some(&pixbuf));
+        self.view
+            .connect_cursor_changed(glib::clone!(@weak self as ui => move |tree_view| {
+                let (path, _) = tree_view.selection().selected_rows();
+                let entry = &data[path[0].indices()[0] as usize];
+                let qr_code = ui.wifi_qr_code(&entry.username.clone(), &entry.password.clone());
+                match Pixbuf::from_stream::<MemoryInputStream, Cancellable>(&qr_code, None) {
+                    Ok(pixbuf) => {
+                        ui.image_qr_code.set_from_pixbuf(Some(&pixbuf));
+                    }
+                    Err(why) => {
+                        println!("Error: {}", why);
+                    }
                 }
-                Err(why) => {
-                    println!("Error: {}", why);
-                }
-            }
-            context
-                .current_entry_label
-                .set_label(&entry.username.clone());
-            context.image_qr_code.set_visible(true);
-        });
+                ui.current_entry_label.set_label(&entry.username.clone());
+                ui.image_qr_code.set_visible(true);
+            }));
     }
 
     fn ui_show_error(&self, message: &str) {
@@ -238,21 +260,22 @@ impl Context {
         self.label_incorrect_password.set_text(message);
     }
 
-    fn ui_switch_unlocked(&mut self, context: Rc<RefCell<Context>>) {
-        assert!(self.current == State::Locked);
+    fn ui_switch_unlocked(self) {
+        let mut context = self.context.borrow_mut();
+        assert!(context.current == State::Locked);
 
-        match File::open(self.file.clone().unwrap().into_os_string()) {
+        match File::open(context.file.clone().unwrap().into_os_string()) {
             Ok(mut file) => {
                 match Database::open(&mut file, Some(&self.entry_password.text()), None) {
                     Ok(db) => {
-                        self.display_database(db, context.clone());
+                        self.display_database(db);
                         self.stack.set_visible_child(&self.stack_entry_database);
                         self.button_open.set_visible(false);
                         self.button_close.set_visible(true);
                         self.subtitle_label.set_visible(true);
                         self.image_qr_code.set_visible(false);
                         self.entry_password.set_text("");
-                        self.current = State::Unlocked;
+                        context.current = State::Unlocked;
                     }
                     Err(message) => {
                         self.ui_show_error(&message.to_string());
@@ -266,50 +289,16 @@ impl Context {
     }
 }
 
-fn kqpr(application: &Application) {
-    let context = Rc::new(RefCell::new(Context::new()));
-
-    // State::Open
-    let open_context = context.clone();
-    context.borrow().button_open.connect_clicked(move |_| {
-        open_context
-            .borrow_mut()
-            .ui_switch_locked(open_context.clone());
-    });
-
-    // State::Empty
-    let close_context = context.clone();
-    context.borrow().button_close.connect_clicked(move |_| {
-        close_context.borrow_mut().ui_switch_empty();
-    });
-
-    // State::Unlocked
-    let unlock_context = context.clone();
-    context.borrow().button_unlock.connect_clicked(move |_| {
-        unlock_context
-            .borrow_mut()
-            .ui_switch_unlocked(unlock_context.clone());
-    });
-
-    let entry_activated_context = context.clone();
-    context.borrow().entry_password.connect_activate(move |_| {
-        entry_activated_context
-            .borrow_mut()
-            .ui_switch_unlocked(entry_activated_context.clone());
-    });
-
-    context.borrow().window.set_application(Some(application));
-    application.connect_activate(move |_| {
-        context.borrow().window.show_all();
-    });
-}
-
 fn main() {
     let app = Application::builder()
         .application_id("net.senier.kqpr")
         .build();
     app.connect_startup(move |application| {
-        kqpr(application);
+        let ui = UI::new();
+        ui.window.set_application(Some(application));
+        application.connect_activate(move |_| {
+            ui.initialize();
+        });
     });
     app.run();
 }
