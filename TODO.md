@@ -1,9 +1,10 @@
 - Handle all unwrap()/expect() outside UI setup
-- Scale QR code with window size
 - Add icon to make password visible
 - Add logo to locked screen
 - Make decryption asynchronous
-- Implement search
 - Implement WIFI tag
 - Honor WiFi standard
+- Implement search
+- Create test case with many/deep entries
 - Fix dependency versions in Cargo.toml
+- Create resource directory
