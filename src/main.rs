@@ -1,12 +1,12 @@
 use gdk::Screen;
 use gtk::gdk_pixbuf::Pixbuf;
 use gtk::gio::{Cancellable, MemoryInputStream};
-use gtk::glib::Bytes;
+use gtk::glib::{signal::SignalHandlerId, Bytes};
 use gtk::prelude::*;
 use gtk::{
     Application, ApplicationWindow, Box, Builder, Button, CellRendererText, CssProvider, Entry,
     FileChooserAction, FileChooserDialog, FileFilter, Image, Label, ListStore, Popover,
-    ResponseType, Stack, StyleContext, TreeView, TreeViewColumn,
+    ResponseType, Stack, StyleContext, TreeModel, TreeView, TreeViewColumn,
 };
 use keepass::{Database, NodeRef};
 use qrcode::{render::svg, EcLevel, QrCode, Version};
@@ -20,14 +20,15 @@ struct Element {
 
 #[derive(PartialEq, Clone, Debug)]
 enum State {
+    Initialized,
     Empty,
     Locked,
     Unlocked,
 }
 
-#[derive(Clone)]
 struct Context {
     current: State,
+    view_signal_id: RefCell<Option<SignalHandlerId>>,
     file: Option<PathBuf>,
 }
 
@@ -66,7 +67,8 @@ impl UI {
         let builder: Builder = Builder::from_string(include_str!("ui.glade"));
         UI {
             context: Rc::new(RefCell::new(Context {
-                current: State::Empty,
+                current: State::Initialized,
+                view_signal_id: RefCell::new(None),
                 file: None,
             })),
             window: builder.object("window_main").expect("Window not found"),
@@ -112,6 +114,13 @@ impl UI {
     }
 
     fn initialize(&self) {
+
+        let column = TreeViewColumn::new();
+        let cell = CellRendererText::new();
+        column.pack_start(&cell, true);
+        column.add_attribute(&cell, "text", 0);
+        self.view.append_column(&column);
+
         self.ui_switch_empty();
 
         self.button_open
@@ -133,7 +142,6 @@ impl UI {
             .connect_activate(glib::clone!(@weak self as ui => move |_| {
                 ui.ui_switch_unlocked();
             }));
-
         self.window.show_all();
     }
 
@@ -178,22 +186,28 @@ impl UI {
 
     fn ui_switch_empty(&self) {
         let mut context = self.context.borrow_mut();
+        assert!(context.current != State::Empty);
         self.stack.set_visible_child(&self.stack_entry_no_database);
         self.button_open.set_visible(true);
         self.button_close.set_visible(false);
         self.subtitle_label.set_visible(false);
+        self.view.set_model::<TreeModel>(None);
+        if let Some(id) = context.view_signal_id.borrow_mut().take() {
+            self.view.disconnect(id);
+        }
         context.current = State::Empty;
     }
 
     fn set_model(&self, model: &Vec<Element>) {
         let data: ListStore = ListStore::new(&[String::static_type()]);
+
         for Element {
             title,
             username: _,
             password: _,
         } in model
         {
-            data.insert_with_values(None, &[(0, title)]);
+            data.set(&data.append(), &[(0, title)]);
         }
         self.view.set_model(Some(&data));
     }
@@ -211,7 +225,7 @@ impl UI {
         MemoryInputStream::from_bytes(&Bytes::from(image.as_bytes()))
     }
 
-    fn display_database(&self, database: Database) {
+    fn display_database(&self, database: Database) -> SignalHandlerId {
         let mut data: Vec<Element> = Vec::new();
         for node in &database.root {
             match node {
@@ -225,29 +239,21 @@ impl UI {
                 }
             }
         }
-        let column = TreeViewColumn::new();
-        let cell = CellRendererText::new();
-
-        column.pack_start(&cell, true);
-        column.add_attribute(&cell, "text", 0);
-        self.view.append_column(&column);
         self.set_model(&data);
 
-        self.view
+        return self.view
             .connect_cursor_changed(glib::clone!(@weak self as ui => move |tree_view| {
-                let (path, _) = tree_view.selection().selected_rows();
-                let entry = &data[path[0].indices()[0] as usize];
-                let qr_code = ui.wifi_qr_code(&entry.username.clone(), &entry.password.clone());
-                match Pixbuf::from_stream::<MemoryInputStream, Cancellable>(&qr_code, None) {
-                    Ok(pixbuf) => {
+                if let Ok(context) = ui.context.try_borrow() {
+                    assert!(context.current == State::Unlocked);
+                    let (path, _) = tree_view.selection().selected_rows();
+                    let entry = &data[path[0].indices()[0] as usize];
+                    let qr_code = ui.wifi_qr_code(&entry.username.clone(), &entry.password.clone());
+                    if let Ok(pixbuf) = Pixbuf::from_stream::<MemoryInputStream, Cancellable>(&qr_code, None) {
                         ui.image_qr_code.set_from_pixbuf(Some(&pixbuf));
                     }
-                    Err(why) => {
-                        println!("Error: {}", why);
-                    }
-                }
-                ui.current_entry_label.set_label(&entry.username.clone());
-                ui.image_qr_code.set_visible(true);
+                    ui.current_entry_label.set_label(&entry.username.clone());
+                    ui.image_qr_code.set_visible(true);
+                };
             }));
     }
 
@@ -268,13 +274,13 @@ impl UI {
             Ok(mut file) => {
                 match Database::open(&mut file, Some(&self.entry_password.text()), None) {
                     Ok(db) => {
-                        self.display_database(db);
                         self.stack.set_visible_child(&self.stack_entry_database);
                         self.button_open.set_visible(false);
                         self.button_close.set_visible(true);
                         self.subtitle_label.set_visible(true);
                         self.image_qr_code.set_visible(false);
                         self.entry_password.set_text("");
+                        context.view_signal_id = RefCell::new(Some(self.display_database(db)));
                         context.current = State::Unlocked;
                     }
                     Err(message) => {
@@ -290,6 +296,7 @@ impl UI {
 }
 
 fn main() {
+    gtk::init().expect("Failed to init Gtk");
     let app = Application::builder()
         .application_id("net.senier.kqpr")
         .build();
