@@ -1,5 +1,3 @@
-- Handle all unwrap()/expect() outside UI setup
-- Add icon to make password visible
 - Add logo to locked screen
 - Make decryption asynchronous
 - Implement WIFI tag

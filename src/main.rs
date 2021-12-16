@@ -6,7 +6,7 @@ use gtk::prelude::*;
 use gtk::{
     Application, ApplicationWindow, Box, Builder, Button, CellRendererText, CssProvider, Entry,
     FileChooserAction, FileChooserDialog, FileFilter, Image, Label, ListStore, Popover,
-    ResponseType, Stack, StyleContext, TreeModel, TreeView, TreeViewColumn,
+    ResponseType, Stack, StyleContext, ToggleButton, TreeModel, TreeView, TreeViewColumn,
 };
 use keepass::{Database, NodeRef};
 use qrcode::{render::svg, EcLevel, QrCode, Version};
@@ -50,6 +50,7 @@ pub struct UI {
     popover_incorrect_password: Popover,
     label_incorrect_password: Label,
     entry_password: Entry,
+    toggle_show_password: ToggleButton,
 }
 
 impl UI {
@@ -110,6 +111,9 @@ impl UI {
             entry_password: builder
                 .object("entry_password")
                 .expect("Password entry not found"),
+            toggle_show_password: builder
+                .object("toggle_show_password")
+                .expect("Show password toggle button not found"),
         }
     }
 
@@ -141,6 +145,11 @@ impl UI {
         self.entry_password
             .connect_activate(glib::clone!(@weak self as ui => move |_| {
                 ui.ui_switch_unlocked();
+            }));
+
+        self.toggle_show_password
+            .connect_clicked(glib::clone!(@weak self as ui => move |_| {
+                ui.entry_password.set_visibility(ui.toggle_show_password.is_active());
             }));
         self.window.show_all();
     }
