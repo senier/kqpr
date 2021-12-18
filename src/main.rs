@@ -51,12 +51,13 @@ pub struct UI {
     label_incorrect_password: Label,
     entry_password: Entry,
     toggle_show_password: ToggleButton,
+    image_icon_no_database: Image,
 }
 
 impl UI {
     fn new() -> UI {
         let css_provider = CssProvider::new();
-        let style = include_bytes!("style.css");
+        let style = include_bytes!("../res/style.css");
         css_provider
             .load_from_data(style)
             .expect("Error loading CSS");
@@ -65,7 +66,7 @@ impl UI {
             &css_provider,
             gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
         );
-        let builder: Builder = Builder::from_string(include_str!("ui.glade"));
+        let builder: Builder = Builder::from_string(include_str!("../res/ui.glade"));
         UI {
             context: Rc::new(RefCell::new(Context {
                 current: State::Initialized,
@@ -114,11 +115,13 @@ impl UI {
             toggle_show_password: builder
                 .object("toggle_show_password")
                 .expect("Show password toggle button not found"),
+            image_icon_no_database: builder
+                .object("image_icon_no_database")
+                .expect("Icon image not found"),
         }
     }
 
     fn initialize(&self) {
-
         let column = TreeViewColumn::new();
         let cell = CellRendererText::new();
         column.pack_start(&cell, true);
@@ -151,6 +154,14 @@ impl UI {
             .connect_clicked(glib::clone!(@weak self as ui => move |_| {
                 ui.entry_password.set_visibility(ui.toggle_show_password.is_active());
             }));
+
+        if let Ok(pixbuf) = Pixbuf::from_stream::<MemoryInputStream, Cancellable>(
+            &MemoryInputStream::from_bytes(&Bytes::from(include_bytes!("../res/icon.svg"))),
+            None,
+        ) {
+            self.image_icon_no_database.set_from_pixbuf(Some(&pixbuf));
+        }
+
         self.window.show_all();
     }
 
