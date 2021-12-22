@@ -298,11 +298,17 @@ impl UI {
         thread::spawn(move || {
             match File::open(filename) {
                 Ok(mut file) => {
-                    let _ = sender.send(Database::open(&mut file, Some(password.as_str()), None));
+                    match Database::open(&mut file, Some(password.as_str()), None) {
+                        Ok(database) => {
+                            let _ = sender.send(Ok(database));
+                        }
+                        Err(message) => {
+                            let _ = sender.send(Err(message.to_string()));
+                        }
+                    }
                 }
-                Err(_message) => {
-                    //  FIXME: Report error through channel
-                    //  self.ui_show_error(&message.to_string());
+                Err(message) => {
+                    let _ = sender.send(Err(message.to_string()));
                 }
             }
         });
