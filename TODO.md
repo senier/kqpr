@@ -1,4 +1,3 @@
-- Create test case with many/deep entries
 - Implement search
 - Implement WIFI tag
 - Honor WiFi standard
