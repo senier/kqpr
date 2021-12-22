@@ -1,6 +1,6 @@
-- Make decryption asynchronous
+- Add decryption progress screen
+- Create test case with many/deep entries
+- Implement search
 - Implement WIFI tag
 - Honor WiFi standard
-- Implement search
-- Create test case with many/deep entries
 - Fix dependency versions in Cargo.toml

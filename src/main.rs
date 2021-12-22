@@ -1,7 +1,7 @@
 use gdk::Screen;
 use gtk::gdk_pixbuf::Pixbuf;
 use gtk::gio::{Cancellable, MemoryInputStream};
-use gtk::glib::{signal::SignalHandlerId, Bytes};
+use gtk::glib::{signal::SignalHandlerId, Bytes, MainContext, PRIORITY_DEFAULT};
 use gtk::prelude::*;
 use gtk::{
     Application, ApplicationWindow, Box, Builder, Button, CellRendererText, CssProvider, Entry,
@@ -10,7 +10,7 @@ use gtk::{
 };
 use keepass::{Database, NodeRef};
 use qrcode::{render::svg, EcLevel, QrCode, Version};
-use std::{cell::RefCell, fs::File, path::PathBuf, rc::Rc};
+use std::{cell::RefCell, fs::File, path::PathBuf, rc::Rc, thread};
 
 struct Element {
     title: String,
@@ -126,6 +126,7 @@ impl UI {
         let cell = CellRendererText::new();
         column.pack_start(&cell, true);
         column.add_attribute(&cell, "text", 0);
+
         self.view.append_column(&column);
 
         self.ui_switch_empty();
@@ -287,31 +288,44 @@ impl UI {
     }
 
     fn ui_switch_unlocked(self) {
-        let mut context = self.context.borrow_mut();
+        let context = self.context.borrow();
+        let filename = context.file.clone().unwrap().into_os_string();
+        let password = self.entry_password.text().as_str().to_string();
         assert!(context.current == State::Locked);
 
-        match File::open(context.file.clone().unwrap().into_os_string()) {
-            Ok(mut file) => {
-                match Database::open(&mut file, Some(&self.entry_password.text()), None) {
-                    Ok(db) => {
-                        self.stack.set_visible_child(&self.stack_entry_database);
-                        self.button_open.set_visible(false);
-                        self.button_close.set_visible(true);
-                        self.subtitle_label.set_visible(true);
-                        self.image_qr_code.set_visible(false);
-                        self.entry_password.set_text("");
-                        context.view_signal_id = RefCell::new(Some(self.display_database(db)));
-                        context.current = State::Unlocked;
-                    }
-                    Err(message) => {
-                        self.ui_show_error(&message.to_string());
-                    }
+        let (sender, receiver) = MainContext::channel(PRIORITY_DEFAULT);
+
+        thread::spawn(move || {
+            match File::open(filename) {
+                Ok(mut file) => {
+                    let _ = sender.send(Database::open(&mut file, Some(password.as_str()), None));
+                }
+                Err(_message) => {
+                    //  FIXME: Report error through channel
+                    //  self.ui_show_error(&message.to_string());
                 }
             }
-            Err(message) => {
-                self.ui_show_error(&message.to_string());
+        });
+
+        receiver.attach(None, glib::clone!(@weak self as ui => @default-return glib::Continue(false), move |database| {
+            let mut context = ui.context.borrow_mut();
+            match database {
+                Ok(db) => {
+                    ui.stack.set_visible_child(&ui.stack_entry_database);
+                    ui.button_open.set_visible(false);
+                    ui.button_close.set_visible(true);
+                    ui.subtitle_label.set_visible(true);
+                    ui.image_qr_code.set_visible(false);
+                    ui.entry_password.set_text("");
+                    context.view_signal_id = RefCell::new(Some(ui.display_database(db)));
+                    context.current = State::Unlocked;
+                }
+                Err(message) => {
+                    ui.ui_show_error(&message.to_string());
+                }
             }
-        }
+            glib::Continue(true)
+        }));
     }
 }
 
