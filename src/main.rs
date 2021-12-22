@@ -47,6 +47,7 @@ pub struct UI {
     stack_entry_no_database: Box,
     stack_entry_database: Box,
     stack_entry_password: Box,
+    stack_entry_loading_database: Box,
     popover_incorrect_password: Popover,
     label_incorrect_password: Label,
     entry_password: Entry,
@@ -103,6 +104,9 @@ impl UI {
             stack_entry_password: builder
                 .object("stack_entry_password")
                 .expect("Password stack entry not found"),
+            stack_entry_loading_database: builder
+                .object("stack_entry_loading_database")
+                .expect("No database loading stack entry not found"),
             popover_incorrect_password: builder
                 .object("popover_incorrect_password")
                 .expect("Incorrect password popover not found"),
@@ -196,6 +200,7 @@ impl UI {
                 ui.stack.set_visible_child(&ui.stack_entry_password);
                 ui.button_open.set_visible(false);
                 ui.button_close.set_visible(true);
+                ui.button_unlock.set_sensitive(true);
                 ui.subtitle_label.set_text(context.file.clone().unwrap().to_str().unwrap());
                 ui.subtitle_label.set_visible(true);
                 context.current = State::Locked;
@@ -295,21 +300,24 @@ impl UI {
 
         let (sender, receiver) = MainContext::channel(PRIORITY_DEFAULT);
 
-        thread::spawn(move || {
-            match File::open(filename) {
-                Ok(mut file) => {
-                    match Database::open(&mut file, Some(password.as_str()), None) {
-                        Ok(database) => {
-                            let _ = sender.send(Ok(database));
-                        }
-                        Err(message) => {
-                            let _ = sender.send(Err(message.to_string()));
-                        }
-                    }
+        self.stack
+            .set_visible_child(&self.stack_entry_loading_database);
+        self.button_open.set_visible(false);
+        self.button_close.set_visible(false);
+        self.button_unlock.set_sensitive(false);
+        self.entry_password.set_sensitive(false);
+
+        thread::spawn(move || match File::open(filename) {
+            Ok(mut file) => match Database::open(&mut file, Some(password.as_str()), None) {
+                Ok(database) => {
+                    let _ = sender.send(Ok(database));
                 }
                 Err(message) => {
                     let _ = sender.send(Err(message.to_string()));
                 }
+            },
+            Err(message) => {
+                let _ = sender.send(Err(message.to_string()));
             }
         });
 
@@ -330,6 +338,8 @@ impl UI {
                     ui.ui_show_error(&message.to_string());
                 }
             }
+            ui.button_unlock.set_sensitive(true);
+            ui.entry_password.set_sensitive(true);
             glib::Continue(true)
         }));
     }

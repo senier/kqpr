@@ -1,4 +1,3 @@
-- Add decryption progress screen
 - Create test case with many/deep entries
 - Implement search
 - Implement WIFI tag
