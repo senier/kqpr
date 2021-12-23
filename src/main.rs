@@ -203,6 +203,7 @@ impl UI {
                 ui.button_unlock.set_sensitive(true);
                 ui.subtitle_label.set_text(context.file.clone().unwrap().to_str().unwrap());
                 ui.subtitle_label.set_visible(true);
+                ui.entry_password.grab_focus();
                 context.current = State::Locked;
             }
             dialog.close();

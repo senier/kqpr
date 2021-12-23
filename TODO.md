@@ -1,6 +1,5 @@
-- Focus password field automatically
-- Make password list fixed width
 - Implement search
 - Implement WIFI tag
 - Honor WiFi standard
 - Fix dependency versions in Cargo.toml
+- Write README
