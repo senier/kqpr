@@ -9,7 +9,7 @@ use gtk::{
     ResponseType, Stack, StyleContext, ToggleButton, TreeModel, TreeView, TreeViewColumn,
 };
 use keepass::{Database, NodeRef};
-use qrcode::{render::svg, EcLevel, QrCode, Version};
+use qrcode::{render::svg, QrCode};
 use std::{cell::RefCell, fs::File, path::PathBuf, rc::Rc, thread};
 
 struct Element {
@@ -241,7 +241,7 @@ impl UI {
     fn wifi_qr_code(&self, username: &str, password: &str) -> MemoryInputStream {
         let qr_data = format!("WIFI:S:{};T:WPA2;P:{};;", &username, &password);
         let code =
-            QrCode::with_version(qr_data.as_bytes(), Version::Normal(4), EcLevel::L).unwrap();
+            QrCode::new(qr_data.as_bytes()).unwrap();
         let image = code
             .render()
             .min_dimensions(200, 200)

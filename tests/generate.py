@@ -11,7 +11,7 @@ from pykeepass.group import Group
 
 
 def randomname(length: int):
-    length = random.randint(0, length)
+    length = random.randint(2, length + 1)
     return "".join(random.choice(string.ascii_lowercase) for i in range(length))
 
 
