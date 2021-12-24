@@ -1,2 +1,1 @@
 - Write README
-- Add license
