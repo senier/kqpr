@@ -46,6 +46,7 @@ pub struct UI {
     stack_entry_loading_database: Box,
     popover_incorrect_password: Popover,
     label_incorrect_password: Label,
+    label_version: Label,
     entry_password: Entry,
     toggle_show_password: ToggleButton,
     image_icon_no_database: Image,
@@ -111,6 +112,9 @@ impl UI {
             label_incorrect_password: builder
                 .object("label_incorrect_password")
                 .expect("Incorrect password label not found"),
+            label_version: builder
+                .object("label_version")
+                .expect("Version label not found"),
             entry_password: builder
                 .object("entry_password")
                 .expect("Password entry not found"),
@@ -129,10 +133,13 @@ impl UI {
     fn initialize(&self) {
         let column = TreeViewColumn::new();
         let cell = CellRendererText::new();
+        let name = option_env!("CARGO_PKG_NAME").unwrap_or("KQPR");
+        let version = option_env!("CARGO_PKG_VERSION").unwrap_or("version unknown");
         column.pack_start(&cell, true);
         column.add_attribute(&cell, "text", 0);
 
         self.view.append_column(&column);
+        self.label_version.set_text(format!("{} ({})", name, version).as_str());
 
         self.ui_switch_empty();
 

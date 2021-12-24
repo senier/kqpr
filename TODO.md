@@ -1,4 +1,3 @@
 - Fix dependency versions in Cargo.toml
 - Write README
-- Add about dialog
 - Add license
