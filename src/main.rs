@@ -6,17 +6,12 @@ use gtk::prelude::*;
 use gtk::{
     Application, ApplicationWindow, Box, Builder, Button, CellRendererText, CssProvider, Entry,
     FileChooserAction, FileChooserDialog, FileFilter, Image, Label, ListStore, Popover,
-    ResponseType, Stack, StyleContext, ToggleButton, TreeModel, TreeView, TreeViewColumn,
+    ResponseType, SearchEntry, Stack, StyleContext, ToggleButton, TreeModelFilter, TreeView,
+    TreeViewColumn,
 };
 use keepass::{Database, NodeRef};
 use qrcode::{render::svg, QrCode};
 use std::{cell::RefCell, fs::File, path::PathBuf, rc::Rc, thread};
-
-struct Element {
-    title: String,
-    username: String,
-    password: String,
-}
 
 #[derive(PartialEq, Clone, Debug)]
 enum State {
@@ -30,6 +25,7 @@ struct Context {
     current: State,
     view_signal_id: RefCell<Option<SignalHandlerId>>,
     file: Option<PathBuf>,
+    view_filter: Option<TreeModelFilter>,
 }
 
 #[derive(glib::Downgrade)]
@@ -53,6 +49,7 @@ pub struct UI {
     entry_password: Entry,
     toggle_show_password: ToggleButton,
     image_icon_no_database: Image,
+    entry_search: SearchEntry,
 }
 
 impl UI {
@@ -73,6 +70,7 @@ impl UI {
                 current: State::Initialized,
                 view_signal_id: RefCell::new(None),
                 file: None,
+                view_filter: None,
             })),
             window: builder.object("window_main").expect("Window not found"),
             button_open: builder
@@ -122,6 +120,9 @@ impl UI {
             image_icon_no_database: builder
                 .object("image_icon_no_database")
                 .expect("Icon image not found"),
+            entry_search: builder
+                .object("entry_search")
+                .expect("Search entry not found"),
         }
     }
 
@@ -158,6 +159,11 @@ impl UI {
         self.toggle_show_password
             .connect_clicked(glib::clone!(@weak self as ui => move |_| {
                 ui.entry_password.set_visibility(ui.toggle_show_password.is_active());
+            }));
+
+        self.entry_search
+            .connect_text_notify(glib::clone!(@weak self as ui => move |_| {
+                ui.context.borrow().view_filter.as_ref().unwrap().refilter();
             }));
 
         if let Ok(pixbuf) = Pixbuf::from_stream::<MemoryInputStream, Cancellable>(
@@ -218,31 +224,52 @@ impl UI {
         self.button_open.set_visible(true);
         self.button_close.set_visible(false);
         self.subtitle_label.set_visible(false);
-        self.view.set_model::<TreeModel>(None);
+        self.view.set_model::<TreeModelFilter>(None);
         if let Some(id) = context.view_signal_id.borrow_mut().take() {
             self.view.disconnect(id);
         }
         context.current = State::Empty;
     }
 
-    fn set_model(&self, model: &Vec<Element>) {
-        let data: ListStore = ListStore::new(&[String::static_type()]);
+    fn set_model(&self, database: Database) {
+        let mut context = self.context.borrow_mut();
+        let list_store: ListStore = ListStore::new(&[
+            String::static_type(),
+            String::static_type(),
+            String::static_type(),
+        ]);
 
-        for Element {
-            title,
-            username: _,
-            password: _,
-        } in model
-        {
-            data.set(&data.append(), &[(0, title)]);
+        for node in &database.root {
+            match node {
+                NodeRef::Group(_) => {}
+                NodeRef::Entry(e) => {
+                    list_store.set(
+                        &list_store.append(),
+                        &[
+                            (0, &e.get_title().unwrap().to_string()),
+                            (1, &e.get_username().unwrap().to_string()),
+                            (2, &e.get_password().unwrap().to_string()),
+                        ],
+                    );
+                }
+            }
         }
-        self.view.set_model(Some(&data));
+        context.view_filter = Some(TreeModelFilter::new(&list_store, None));
+        context.view_filter.as_ref().unwrap().set_visible_func(
+            glib::clone!(@weak self as ui => @default-return true, move |model, iter| {
+                let search_text = ui.entry_search.text().as_str().to_string();
+                let title = model.value(&iter, 0).get::<String>().expect("Invalid title");
+                let username = model.value(&iter, 1).get::<String>().expect("Invalid username");
+                title.contains(&search_text) || username.contains(&search_text)
+            }),
+        );
+        self.view
+            .set_model::<TreeModelFilter>(context.view_filter.as_ref());
     }
 
     fn wifi_qr_code(&self, username: &str, password: &str) -> MemoryInputStream {
         let qr_data = format!("WIFI:S:{};T:WPA2;P:{};;", &username, &password);
-        let code =
-            QrCode::new(qr_data.as_bytes()).unwrap();
+        let code = QrCode::new(qr_data.as_bytes()).unwrap();
         let image = code
             .render()
             .min_dimensions(200, 200)
@@ -253,33 +280,24 @@ impl UI {
     }
 
     fn display_database(&self, database: Database) -> SignalHandlerId {
-        let mut data: Vec<Element> = Vec::new();
-        for node in &database.root {
-            match node {
-                NodeRef::Group(_) => {}
-                NodeRef::Entry(e) => {
-                    data.push(Element {
-                        title: e.get_title().unwrap().to_string(),
-                        username: e.get_username().unwrap().to_string(),
-                        password: e.get_password().unwrap().to_string(),
-                    });
-                }
-            }
-        }
-        self.set_model(&data);
-
+        self.set_model(database);
         return self.view
             .connect_cursor_changed(glib::clone!(@weak self as ui => move |tree_view| {
                 if let Ok(context) = ui.context.try_borrow() {
                     assert!(context.current == State::Unlocked);
-                    let (path, _) = tree_view.selection().selected_rows();
-                    let entry = &data[path[0].indices()[0] as usize];
-                    let qr_code = ui.wifi_qr_code(&entry.username.clone(), &entry.password.clone());
-                    if let Ok(pixbuf) = Pixbuf::from_stream::<MemoryInputStream, Cancellable>(&qr_code, None) {
-                        ui.image_qr_code.set_from_pixbuf(Some(&pixbuf));
+                    if let Some((model, iter)) = tree_view.selection().selected() {
+                        let username = model.value(&iter, 1).get::<String>().expect("Invalid username");
+                        let password = model.value(&iter, 2).get::<String>().expect("Invalid password");
+                        let qr_code = ui.wifi_qr_code(&username, &password);
+                        if let Ok(pixbuf) = Pixbuf::from_stream::<MemoryInputStream, Cancellable>(&qr_code, None) {
+                            ui.image_qr_code.set_from_pixbuf(Some(&pixbuf));
+                        }
+                        ui.current_entry_label.set_label(&username);
+                        ui.image_qr_code.set_visible(true);
+                    } else {
+                        ui.current_entry_label.set_label("");
+                        ui.image_qr_code.set_visible(false);
                     }
-                    ui.current_entry_label.set_label(&entry.username.clone());
-                    ui.image_qr_code.set_visible(true);
                 };
             }));
     }
@@ -323,7 +341,6 @@ impl UI {
         });
 
         receiver.attach(None, glib::clone!(@weak self as ui => @default-return glib::Continue(false), move |database| {
-            let mut context = ui.context.borrow_mut();
             match database {
                 Ok(db) => {
                     ui.stack.set_visible_child(&ui.stack_entry_database);
@@ -332,8 +349,12 @@ impl UI {
                     ui.subtitle_label.set_visible(true);
                     ui.image_qr_code.set_visible(false);
                     ui.entry_password.set_text("");
-                    context.view_signal_id = RefCell::new(Some(ui.display_database(db)));
-                    context.current = State::Unlocked;
+                    let database = ui.display_database(db);
+                    {
+                        let mut context = ui.context.borrow_mut();
+                        context.view_signal_id = RefCell::new(Some(database));
+                        context.current = State::Unlocked;
+                    }
                 }
                 Err(message) => {
                     ui.ui_show_error(&message.to_string());

@@ -1,4 +1,3 @@
-- Implement search
 - Implement WIFI tag
 - Honor WiFi standard
 - Fix dependency versions in Cargo.toml
