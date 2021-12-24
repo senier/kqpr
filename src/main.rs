@@ -153,7 +153,8 @@ impl UI {
         column.add_attribute(&cell, "text", 0);
 
         self.view.append_column(&column);
-        self.label_version.set_text(format!("{} ({})", name, version).as_str());
+        self.label_version
+            .set_text(format!("{} ({})", name, version).as_str());
 
         self.ui_switch_empty();
 
@@ -268,8 +269,7 @@ impl UI {
                     let username = e.get_username().unwrap().to_string();
                     for data in [&title, &username] {
                         for pattern in ["wifi", "wi-fi", "wlan", "wireless", "wpa"] {
-                            if data.to_lowercase().contains(pattern)
-                            {
+                            if data.to_lowercase().contains(pattern) {
                                 list_store.set(
                                     &list_store.append(),
                                     &[
