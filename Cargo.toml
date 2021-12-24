@@ -6,8 +6,8 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-gtk = "*"
-gdk = "*"
-glib = "*"
-keepass = "*"
-qrcode = "*"
+gtk = "0.14.*"
+gdk = "0.14.*"
+glib = "0.14.*"
+keepass = "0.4.9"
+qrcode = "0.12.0"
