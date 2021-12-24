@@ -10,9 +10,18 @@ from pykeepass import PyKeePass, create_database
 from pykeepass.group import Group
 
 
-def randomname(length: int):
+def randomname(length: int, wifi: int = 0, title: bool = False):
     length = random.randint(2, length + 1)
-    return "".join(random.choice(string.ascii_lowercase) for i in range(length))
+    if random.randint(0, 100) < wifi:
+        options = ["wifi_", "wi-fi_", "wlan_", "wireless_"]
+        if title:
+            options += ["[wpa] ", "[wpa2] ", "[wpa3] ", "[wep] "]
+        wifi_str = options[random.randint(0, len(options) - 1)]
+        if random.randint(0, 2):
+            wifi_str = wifi_str.upper()
+    else:
+        wifi_str = ""
+    return wifi_str + "".join(random.choice(string.ascii_lowercase) for i in range(length))
 
 
 def add_random_entries(
@@ -23,8 +32,8 @@ def add_random_entries(
     for _ in range(1, random.randint(1, max_entries + 1)):
         database.add_entry(
             destination_group=group,
-            title=randomname(10),
-            username=randomname(10),
+            title=randomname(10, wifi=20, title=True),
+            username=randomname(10, wifi=20),
             password=randomname(100),
         )
     if random.randint(1, 101) < descent_prob:

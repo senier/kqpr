@@ -243,14 +243,23 @@ impl UI {
             match node {
                 NodeRef::Group(_) => {}
                 NodeRef::Entry(e) => {
-                    list_store.set(
-                        &list_store.append(),
-                        &[
-                            (0, &e.get_title().unwrap().to_string()),
-                            (1, &e.get_username().unwrap().to_string()),
-                            (2, &e.get_password().unwrap().to_string()),
-                        ],
-                    );
+                    let title = e.get_title().unwrap().to_string();
+                    let username = e.get_username().unwrap().to_string();
+                    for data in [&title, &username] {
+                        for pattern in ["wifi", "wi-fi", "wlan", "wireless", "wpa"] {
+                            if data.to_lowercase().contains(pattern)
+                            {
+                                list_store.set(
+                                    &list_store.append(),
+                                    &[
+                                        (0, &title),
+                                        (1, &username),
+                                        (2, &e.get_password().unwrap().to_string()),
+                                    ],
+                                );
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -267,8 +276,22 @@ impl UI {
             .set_model::<TreeModelFilter>(context.view_filter.as_ref());
     }
 
-    fn wifi_qr_code(&self, username: &str, password: &str) -> MemoryInputStream {
-        let qr_data = format!("WIFI:S:{};T:WPA2;P:{};;", &username, &password);
+    fn wifi_qr_code(&self, title: &str, username: &str, password: &str) -> MemoryInputStream {
+        let wifi_type = {
+            let title = title.to_lowercase();
+            if title.contains("[wpa3]") {
+                "WPA3"
+            } else if title.contains("[wpa2]") {
+                "WPA2"
+            } else if title.contains("[wpa]") {
+                "WPA"
+            } else if title.contains("[wep]") {
+                "WEP"
+            } else {
+                "WPA2"
+            }
+        };
+        let qr_data = format!("WIFI:S:{};T:{};P:{};;", &username, &wifi_type, &password);
         let code = QrCode::new(qr_data.as_bytes()).unwrap();
         let image = code
             .render()
@@ -286,9 +309,10 @@ impl UI {
                 if let Ok(context) = ui.context.try_borrow() {
                     assert!(context.current == State::Unlocked);
                     if let Some((model, iter)) = tree_view.selection().selected() {
+                        let title = model.value(&iter, 0).get::<String>().expect("Invalid title");
                         let username = model.value(&iter, 1).get::<String>().expect("Invalid username");
                         let password = model.value(&iter, 2).get::<String>().expect("Invalid password");
-                        let qr_code = ui.wifi_qr_code(&username, &password);
+                        let qr_code = ui.wifi_qr_code(&title, &username, &password);
                         if let Ok(pixbuf) = Pixbuf::from_stream::<MemoryInputStream, Cancellable>(&qr_code, None) {
                             ui.image_qr_code.set_from_pixbuf(Some(&pixbuf));
                         }
