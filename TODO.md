@@ -1,1 +1,2 @@
-- Write README
+- Integrate with desktop environment (icon, launcher)
+- Upload crate
