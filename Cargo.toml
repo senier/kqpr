@@ -11,6 +11,8 @@ keywords = ["QR", "keepass", "KDBX", "wifi"]
 include = [
    "src/*.rs",
    "res/icon.svg",
+   "res/style.css",
+   "res/ui.glade",
    "Cargo.toml",
    "doc/2021-12-24_screenshot.png",
 ]
