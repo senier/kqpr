@@ -1,7 +1,7 @@
-# KQPR - QR codes for KeePass databases
+# ![KQRP logo](res/icon.svg) KQPR: QR codes for KeePass databases.
 
-KQPR is a Gtk application that loads [KeePass](https://keepass.info) KDBX files and displays a QR
-code for WiFi passwords found in that database.
+KQPR is a Gtk application that loads a [KeePass](https://keepass.info) KDBX file and displays a QR
+code for the WiFi passwords found in that database.
 
 ![KQPR screenshot](doc/2021-12-24_screenshot.png)
 

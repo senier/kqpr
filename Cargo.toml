@@ -6,6 +6,7 @@ license = "Apache-2.0"
 edition = "2021"
 homepage = "https://github.com/senier/kqpr"
 repository = "https://github.com/senier/kqpr"
+keywords = ["QR", "keepass", "KDBX", "wifi"]
 
 include = [
    "src/*.rs",

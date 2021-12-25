@@ -155,8 +155,13 @@ impl UI {
         column.add_attribute(&cell, "text", 0);
 
         self.view.append_column(&column);
-        self.label_version
-            .set_text(format!("{} ({})", pkg_name, version).as_str());
+        self.label_version.set_markup(
+            format!(
+                "<a href=\"https://github.com/senier/kqpr\">{}</a> ({})",
+                pkg_name, version
+            )
+            .as_str(),
+        );
 
         self.ui_switch_empty();
 
