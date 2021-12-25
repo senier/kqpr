@@ -1,9 +1,18 @@
 [package]
 name = "kqpr"
+description = "QR codes for KeePass databases"
 version = "0.1.0"
 license = "Apache-2.0"
 license-file = "LICENSE.txt"
 edition = "2021"
+homepage = "https://github.com/senier/kqpr"
+repository = "https://github.com/senier/kqpr"
+
+include = [
+   "src/*.rs",
+   "res/icon.svg",
+   "Cargo.toml",
+]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
