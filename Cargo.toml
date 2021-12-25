@@ -3,7 +3,6 @@ name = "kqpr"
 description = "QR codes for KeePass databases"
 version = "0.1.0"
 license = "Apache-2.0"
-license-file = "LICENSE.txt"
 edition = "2021"
 homepage = "https://github.com/senier/kqpr"
 repository = "https://github.com/senier/kqpr"
@@ -12,6 +11,7 @@ include = [
    "src/*.rs",
    "res/icon.svg",
    "Cargo.toml",
+   "doc/2021-12-24_screenshot.png",
 ]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -22,3 +22,4 @@ gdk = "0.14.*"
 glib = "0.14.*"
 keepass = "0.4.9"
 qrcode = "0.12.0"
+home = "0.5.3"

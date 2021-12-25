@@ -12,6 +12,11 @@ their titles or usernames will be considered WiFi passwords. By default networks
 WPA2 encrypted. Using the special tags `[wpa3]`, `[wpa2]`, `[wpa]` and `[wep]` (any casing) in the
 title of an entry changes this default behavior.
 
+## Desktop integration
+
+Use the `--desktop-install` command-line option to install an icon and desktop entry for the
+current user.
+
 ## License and Source
 
 KQPR is distributed under the [Apache 2.0](https://spdx.org/licenses/Apache-2.0.html) open source

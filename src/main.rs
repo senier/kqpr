@@ -25,7 +25,9 @@ use gtk::{
 };
 use keepass::{Database, NodeRef};
 use qrcode::{render::svg, QrCode};
-use std::{cell::RefCell, fs::File, path::PathBuf, rc::Rc, thread};
+use std::{cell::RefCell, env, fs::File, io::Write, path::PathBuf, rc::Rc, thread};
+
+static ICON_DATA: &str = include_str!("../res/icon.svg");
 
 #[derive(PartialEq, Clone, Debug)]
 enum State {
@@ -145,16 +147,16 @@ impl UI {
     }
 
     fn initialize(&self) {
+        let pkg_name = option_env!("CARGO_PKG_NAME").unwrap_or("kqpr");
         let column = TreeViewColumn::new();
         let cell = CellRendererText::new();
-        let name = option_env!("CARGO_PKG_NAME").unwrap_or("KQPR");
         let version = option_env!("CARGO_PKG_VERSION").unwrap_or("version unknown");
         column.pack_start(&cell, true);
         column.add_attribute(&cell, "text", 0);
 
         self.view.append_column(&column);
         self.label_version
-            .set_text(format!("{} ({})", name, version).as_str());
+            .set_text(format!("{} ({})", pkg_name, version).as_str());
 
         self.ui_switch_empty();
 
@@ -189,7 +191,7 @@ impl UI {
             }));
 
         if let Ok(pixbuf) = Pixbuf::from_stream::<MemoryInputStream, Cancellable>(
-            &MemoryInputStream::from_bytes(&Bytes::from(include_bytes!("../res/icon.svg"))),
+            &MemoryInputStream::from_bytes(&Bytes::from(ICON_DATA.as_bytes())),
             None,
         ) {
             self.image_icon_no_database.set_from_pixbuf(Some(&pixbuf));
@@ -412,7 +414,63 @@ impl UI {
     }
 }
 
+fn desktop_install() {
+    let pkg_name = option_env!("CARGO_PKG_NAME").unwrap_or("kqpr");
+    let exec_path = env::current_exe().unwrap();
+    let icon_path = exec_path.with_extension("svg");
+    let desktop_entry = format!(
+        concat!(
+            "[Desktop Entry]\n",
+            "Encoding=UTF-8\n",
+            "Name={}\n",
+            "Exec={}\n",
+            "Icon={}\n",
+            "Type=Application\n",
+        ),
+        pkg_name,
+        exec_path.display(),
+        icon_path.display()
+    );
+
+    let mut icon = File::create(icon_path).unwrap();
+    let _ = write!(icon, "{}", ICON_DATA);
+
+    let path = home::home_dir()
+        .unwrap()
+        .join(PathBuf::from(".local/share/applications"))
+        .join(PathBuf::from(pkg_name).with_extension("desktop"));
+    let mut output = File::create(&path).unwrap();
+    let _ = write!(output, "{}", desktop_entry);
+    println!("Installed {}", path.display())
+}
+
+fn usage() {
+    print!(
+        "Invalid arguments.\n{} [--desktop-install]\n",
+        env::current_exe()
+            .unwrap_or(PathBuf::from("kqpr"))
+            .display()
+    );
+    std::process::exit(1);
+}
+
 fn main() {
+    let args: Vec<String> = env::args().collect();
+
+    match args.len() {
+        1 => {}
+        2 => {
+            if args[1] != "--desktop-install" {
+                usage();
+            }
+            desktop_install();
+            std::process::exit(0);
+        }
+        _ => {
+            usage();
+        }
+    }
+
     gtk::init().expect("Failed to init Gtk");
     let app = Application::builder()
         .application_id("net.senier.kqpr")
